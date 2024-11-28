@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+
+  /* Efecto Flip */
+  .flip-card {
+    perspective: 1000px;
+    /* Necesario para crear el efecto 3D */
+  }
+
+  .flip-inner {
+    transform-style: preserve-3d;
+    /* Mantiene las caras */
+    transition: transform 0.6s;
+    /* Duración del flip */
+  }
+
+  .group:hover .flip-inner {
+    transform: rotateY(180deg);
+    /* Gira al hacer hover */
+  }
+
+  .flip-front,
+  .flip-back {
+    backface-visibility: hidden;
+    /* Oculta el contenido del lado opuesto */
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .flip-back {
+    transform: rotateY(180deg);
+    /* El lado trasero está girado inicialmente */
+  }
+
+  /* Animación del fondo del modal (blur y fade-in) */
+  @keyframes fadeInBlur {
+    from {
+      opacity: 0;
+      backdrop-filter: blur(0);
+    }
+
+    to {
+      opacity: 1;
+      backdrop-filter: blur(8px);
+    }
+  }
+
+  .animate-blur {
+    animation: fadeInBlur 0.5s ease-in-out forwards;
+  }
+
+  /* Animación del modal (expansión y fade-in) */
+  @keyframes expandIn {
+    from {
+      transform: scale(0.5);
+      opacity: 0;
+    }
+
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .animate-expand {
+    animation: expandIn 0.4s ease-out forwards;
+  }
+
+  /* Animación de desvanecimiento */
+  @keyframes fadeInOut {
+    0% {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Clase de animación */
+  .animate-fadeInOut {
+    animation: fadeInOut 0.5s ease-in-out forwards;
+  }
+
+}
