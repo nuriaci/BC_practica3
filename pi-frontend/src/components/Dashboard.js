@@ -29,6 +29,8 @@ function Dashboard() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false); // Estado para los términos y condiciones
+  const [currentAccount, setCurrentAccount] = useState(null); // Cuenta actual
 
   // Funciones para navegar por las funcionalidades del dashboard
   const functionalities = [
@@ -49,8 +51,16 @@ function Dashboard() {
   };
 
   useEffect(() => {
-    buscarArchivos();
-  }, []);
+    // Verifica la cuenta conectada al cargar el componente
+    checkAccount();
+  }, []); // Se ejecuta solo al montar el componente
+  
+  useEffect(() => {
+    // Busca los archivos registrados después de asegurarse de que hay una cuenta conectada
+    if (currentAccount) {
+      buscarArchivos();
+    }
+  }, [currentAccount]); // Se ejecuta cuando `currentAccount` cambia
 
   const buscarArchivos = async () => {
     try {
@@ -84,6 +94,54 @@ function Dashboard() {
       setArchivos(archivosProcesados); // Establecer los archivos procesados con acceso
     } catch (error) {
       console.error("Error al obtener los archivos:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkAccount = async () => {
+    try {
+      const accounts = await window.ethereum.request ({method: "eth_accounts"});
+      if (accounts.length > 0) {
+        const account = accounts[0];
+        setCurrentAccount(account);
+        await checkTermsAcceptance(account)
+      }
+    } catch (error) {
+      console.error("Error al verificar la cuenta actual:", error);
+    }
+  };
+
+  const checkTermsAcceptance = async (account) => {
+    try { 
+      const termsAccepted = await registroContract.verificarConsentimiento(account);
+      setShowTermsModal(!termsAccepted); // Mostrar modal si no ha aceptado
+    } catch (error) {
+      console.error("Error al verificar términos y condiciones:", error);
+    }
+  };
+
+  // Manejar cambio de cuentas
+  const handleAccountsChanged = async (accounts) => {
+    if (accounts.length > 0) {
+      const account = accounts[0];
+      setCurrentAccount(account);
+      await checkTermsAcceptance(account);
+    }
+  };
+
+  const acceptTerms = async () => {
+    try {
+      setLoading(true);
+      const signer = defaultProvider.getSigner();
+      const contractWithSigner = registroContract.connect(signer);
+
+      const tx = await contractWithSigner.aceptarTerminosYCondiciones();
+      await tx.wait()
+
+      setShowTermsModal(false);
+    } catch (error) {
+      console.error("Error al aceptar términos y condiciones:", error);
     } finally {
       setLoading(false);
     }
@@ -142,6 +200,28 @@ function Dashboard() {
     >
       {/* Fondo oscuro general */}
       <div className="bg-black bg-opacity-50 w-full h-full absolute top-0 left-0"></div>
+
+      {/* Modal de Términos y Condiciones */}
+      {showTermsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white text-black rounded-lg shadow-lg p-8 w-96">
+            <h2 className="text-xl font-bold mb-4">Términos y Condiciones</h2>
+            <p className="text-sm mb-6">
+              Por favor, lea y acepte los términos y condiciones para continuar usando el servicio.
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={acceptTerms}
+                className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ${loading && "opacity-50 cursor-not-allowed"}`}
+                disabled={loading}
+              >
+                {loading ? "Procesando..." : "Aceptar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Opciones principales (3/4 del espacio) */}
       <div className="relative z-10 flex flex-col w-full sm:w-3/4 p-6 justify-center items-center min-h-screen">
