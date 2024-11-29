@@ -168,7 +168,7 @@ function Dashboard() {
       const address = await signer.getAddress();
 
       // Verificar si el archivo pertenece al usuario
-      const esPropietario = await registroContract.verifyProperty(file.tokenId, address);
+      const esPropietario = await registroContract.verifyProperty(file.tokenId, address) || registroContract.comprobarAcceso(file.tokenId, address);
       console.log(file.tokenId)
 
       // Verificar si el usuario tiene permisos (propietario o compartido)

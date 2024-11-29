@@ -171,6 +171,18 @@ contract PropiedadIntelectual is ERC721URIStorage {
         incrementarNonce(tokenId);
         claim.acceso = false;
 
+        // Re-emitir claims a todos los usuarios que deberían mantener acceso
+        for (uint256 i = 0; i < propietarios.length; i++) {
+            address user = propietarios[i];
+            Claim storage newClaim = claims[tokenId][usuario];
+
+            // Si el claim estaba activo, generamos un nuevo claim
+            if (newClaim.acceso == false) {
+                // Crear nuevo claim con acceso renovado
+                emisionClaims(user, tokenId, newClaim.duracion);
+            }
+        }
+
         emit ClaimRevocado(usuario, tokenId);
     }
 
@@ -224,6 +236,10 @@ contract PropiedadIntelectual is ERC721URIStorage {
         emit RegistroRealizado(msg.sender, hash_ipfs, titulo, block.timestamp, tokenId);
     }
 
+    function concederAcceso(uint256 tokenId) external view returns (bytes32) {
+        return obtenerClaveConNonce(tokenId, msg.sender);
+    }
+
     function comprobarAcceso(uint256 tokenId, address usuario) external view returns (bool) {
         return verificacionClaims(usuario, tokenId);
     }
@@ -234,6 +250,10 @@ contract PropiedadIntelectual is ERC721URIStorage {
 
     function verifyMyProperty(uint256 tokenId) public view returns (bool){
         return ownerOf(tokenId) == msg.sender;    
+    }
+
+    function darLicenciaTemporal(uint256 tokenId, address usuario, uint256 duracionLicencia) external soloPropietario(tokenId) {
+        emisionClaims(usuario, tokenId, duracionLicencia);
     }
 
     function listarClaimsArchivo (uint256 tokenId) public view soloPropietario(tokenId) returns(Claim[] memory) {
@@ -385,8 +405,10 @@ contract PropiedadIntelectual is ERC721URIStorage {
     }
 
     /* ===== Obtener Clave Derivada con Nonce ===== */
-    function obtenerClaveConNonce(uint256 tokenId, address usuario) external view returns (bytes32) {
+    function obtenerClaveConNonce(uint256 tokenId, address usuario) public view returns (bytes32) {
         require(verificacionClaims(usuario, tokenId), "No tienes acceso");
         return keccak256(abi.encodePacked(clavesCifrado[tokenId], nonces[tokenId]));
     }
+
+
 }
