@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { addresses, abis } from "../contracts";
 import { ArrowsRightLeftIcon, CheckCircleIcon, XCircleIcon, DocumentMagnifyingGlassIcon, FingerPrintIcon, ClockIcon, TrashIcon } from '@heroicons/react/24/outline';
@@ -6,8 +6,6 @@ import { create } from "kubo-rpc-client"; // Cliente IPFS
 
 // Proveedor de Ethereum
 const defaultProvider = new ethers.providers.Web3Provider(window.ethereum);
-const client = create("/ip4/127.0.0.1/tcp/5002"); // URL del nodo IPFS local
-
 
 // Instancia del contrato en Ethereum
 const propietarioContract = new ethers.Contract(
@@ -36,6 +34,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
   const [hashActualCertificado, sethashActualCertificado] = useState("");
   const [certificado, setCertificado] = useState(null);
 
+
   const functionalities = [
     { title: "Transferir propiedad", action: () => setActiveOption("transferir"), icon: <ArrowsRightLeftIcon className="w-8 h-8" /> },
     { title: "Proporcionar acceso", action: () => setActiveOption("acceso"), icon: <CheckCircleIcon className="w-8 h-8" /> },
@@ -46,18 +45,63 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     { title: "Eliminar archivo", action: () => setActiveOption("eliminar"), icon: <TrashIcon className="w-8 h-8" /> },
   ];
 
+  // Función para escuchar el evento "ArchivoEliminado"
+  useEffect(() => {
+    const listenToArchivoEliminado = () => {
+      propietarioContract.on("ArchivoEliminado", async (hash_ipfs, tokenId) => {
+        console.log("Evento 'ArchivoEliminado' detectado.");
+        try {
+          console.log("Intentando eliminar archivo con CID:", hash_ipfs);
+          await eliminarArchivoDeIPFS(hash_ipfs); // Eliminar archivo de IPFS
+          alert("Archivo eliminado de IPFS.");
+        } catch (error) {
+          console.error("Error al eliminar archivo de IPFS:", error.message);
+          setErrorMessage("No se pudo eliminar el archivo de IPFS.");
+        }
+      });
+    };
 
+    listenToArchivoEliminado();
+
+    // Limpiar el listener cuando el componente se desmonte
+    return () => {
+      propietarioContract.removeListener("ArchivoEliminado", listenToArchivoEliminado);
+    };
+  }, []);
+
+  // Función para eliminar archivo de IPFS
   const eliminarArchivoDeIPFS = async (cid) => {
     try {
-      await client.pin.rm(cid); // Desanclar el archivo
-      await client.repo.gc();   // Hacer limpieza de la memoria local
-      console.log(`Archivo con CID ${cid} eliminado de IPFS local.`);
+      const client = create("/ip4/127.0.0.1/tcp/5002"); // Conexión IPFS local
+      console.log("Intentando eliminar archivo con CID:", cid);
+
+      // Obtener la lista de archivos anclados (AsyncGenerator)
+      const pinListGenerator = await client.pin.ls();
+
+      let found = false;
+
+      // Iterar sobre los resultados del generador y eliminar los archivos recursivos e indirectos
+      for await (let pin of pinListGenerator) {
+        console.log("Archivo anclado:", pin);
+        if (pin.cid === cid || pin.cid === cid) {
+          // Eliminar el archivo anclado (ya sea recursivo o indirecto)
+          await client.pin.rm(pin.cid, { recursive: true }); // Desanclaje recursivo
+          console.log(`Archivo con CID ${pin.cid} eliminado de IPFS local.`);
+          found = true;
+        }
+      }
+
+      if (!found) {
+        console.log(`El archivo con CID ${cid} no está anclado.`);
+      }
+
     } catch (error) {
-      console.error(`Error al eliminar el archivo de IPFS: ${error.message}`);
-      throw new Error("No se pudo eliminar el archivo de IPFS.");
+      console.error("Error al eliminar archivo de IPFS:", error.message);
+      setErrorMessage("No se pudo eliminar el archivo de IPFS.");
     }
   };
 
+  // Función para eliminar el archivo
   const eliminarArchivo = async (e) => {
     e.preventDefault();
     setErrorMessage("");
@@ -70,24 +114,13 @@ function RecursosPropietario({ closeModal, selectedFile }) {
 
       alert("Archivo eliminado del contrato. Eliminando de IPFS...");
 
-      // Eliminar el archivo de IPFS
-      propietarioContract.once("ArchivoEliminado", async (hash_ipfs) => {
-        try {
-          await eliminarArchivoDeIPFS(hash_ipfs);
-          alert("Archivo eliminado de IPFS.");
-        } catch (error) {
-          console.error("Error al eliminar archivo de IPFS:", error.message);
-          setErrorMessage("No se pudo eliminar el archivo de IPFS.");
-        }
-      });
-
+      // Aquí no es necesario obtener el hash del archivo explícitamente porque lo estamos obteniendo del evento
       closeModal(); // Cerrar el modal después de completar la eliminación
     } catch (error) {
       console.error("Error al eliminar el archivo:", error.message);
       setErrorMessage("Error al eliminar el archivo. Asegúrate de ser el propietario.");
     }
   };
-
 
   /*Transferir propiedad */
   const transferirPropiedad = async (e) => {
@@ -441,7 +474,6 @@ function RecursosPropietario({ closeModal, selectedFile }) {
         >
           &times;
         </button>
-
         {activeOption && (
           <button
             onClick={() => setActiveOption(null)}  // Resetear al menú principal

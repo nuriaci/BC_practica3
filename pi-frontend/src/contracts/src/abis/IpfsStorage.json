@@ -168,6 +168,25 @@
         "inputs": [
             {
                 "indexed": false,
+                "internalType": "string",
+                "name": "hash_ipfs",
+                "type": "string"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "ArchivoEliminado",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
                 "internalType": "uint256",
                 "name": "_fromTokenId",
                 "type": "uint256"
