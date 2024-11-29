@@ -5,9 +5,17 @@ import { Buffer } from "buffer";
 import { addresses, abis } from "../contracts"; // Contratos
 import { toast } from 'react-toastify'; // Importar la función de Toastify
 import 'react-toastify/dist/ReactToastify.css'; // Importar los estilos de Toastify
+import CryptoJS from 'crypto-js';
 
 // Proveedor de Ethereum
 const defaultProvider = new ethers.providers.Web3Provider(window.ethereum);
+
+// Instancia del oráculo
+const oraculoContract = new ethers.Contract(
+  addresses.oraculoCreds,
+  abis.oraculoCreds,
+  defaultProvider
+)
 
 // Instancia del contrato en Ethereum
 const registroContract = new ethers.Contract(
@@ -32,7 +40,9 @@ function UploadFile({ closeModal }) {
       const reader = new window.FileReader();
 
       reader.onloadend = () => {
-        setFile(Buffer(reader.result)); // Convertir el archivo en Buffer para IPFS
+        // Convertir el archivo en Buffer para IPFS
+        const fileBuffer = Buffer.from(reader.result);
+        setFile(fileBuffer); // Guardamos el archivo como Buffer
       };
 
       reader.readAsArrayBuffer(data);
@@ -61,7 +71,32 @@ function UploadFile({ closeModal }) {
     }
   };
 
+  const cipherFile = (file) => {
+   // Convertir el archivo a base64 antes de cifrarlo
+  const fileBase64 = CryptoJS.enc.Base64.stringify(CryptoJS.lib.WordArray.create(file));
 
+  // Generar una clave aleatoria para el cifrado
+  const key = CryptoJS.lib.WordArray.random(32);  // 32 bytes para clave
+  
+  // Cifrar el archivo usando AES
+  const cipheredFile = CryptoJS.AES.encrypt(fileBase64, key).toString();
+
+  // Decodificar la clave Base64 a un Uint8Array (bytes)
+  const keyHex = CryptoJS.enc.Hex.stringify(key);
+
+  // Ahora tratamos el archivo cifrado como Buffer para asegurarnos de que no sea tratado como texto
+  const cipheredFileBuffer = Buffer.from(cipheredFile, 'utf-8'); // Convertir la cadena cifrada a Buffer
+  // Verificación y depuración de valores
+  console.log("Archivo cifrado:", cipheredFile);
+  console.log("Clave hexadecimal:", keyHex);
+
+  // Asegurarse de que no esté vacío
+  if (!cipheredFile || !keyHex) {
+    throw new Error("El archivo cifrado o la clave no se generaron correctamente.");
+  }
+  
+  return { cipheredFileBuffer, keyHex }; // Retorna la clave en formato correcto y el archivo cifrado
+  }
 
   // Subir archivo a IPFS y registrarlo en Ethereum
   const handleSubmit = async (e) => {
@@ -80,11 +115,17 @@ function UploadFile({ closeModal }) {
       const account = await checkMetaMaskConnection();
       console.log(`Conectado a MetaMask con la cuenta: ${account}`);
 
+      // Cifrar el archivo
+      const { cipheredFileBuffer, key } = cipherFile(file);
+
       // Cliente IPFS (conexión a tu nodo local)
-      const client = await create("/ip4/127.0.0.1/tcp/5002"); // Conexión IPFS local
+      const client = await create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
 
-      const result = await client.add(file);
+      // Subir el archivo cifrado a IPFS
+      const result = await client.add(cipheredFileBuffer);
+      console.log("Archivo subido a IPFS:", result);
 
+      // Manejo de errores de IPFS
       try {
         await client.files.cp(`/ipfs/${result.cid}`, `/${result.cid}`);
       } catch (error) {
@@ -103,7 +144,8 @@ function UploadFile({ closeModal }) {
       const tx = await contratoConSigner.registro(
         result.cid.toString(), // Hash del archivo IPFS
         titulo,                 // Título del archivo
-        descripcion            // Descripción del archivo
+        descripcion,           // Descripción del archivo
+        key // Clave cifrada
       );
       await tx.wait(); // Esperar confirmación de la transacción
       setIpfsHash(result.cid.toString());

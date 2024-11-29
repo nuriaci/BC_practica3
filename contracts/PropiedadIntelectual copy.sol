@@ -19,10 +19,25 @@ import "./openzeppelin-contracts/token/ERC721/extensions/ERC721URIStorage.sol";
     //aleta de expiracion -> licencias temporales 
     //eliminar archivo (IPFS)
 
+contract OraculoVerificacionAcceso {
+    mapping(uint256 => mapping (address => bool)) private accesoUsuarios;
+
+    function actualizarAcceso(address usuario, uint256 tokenId, bool acceso) external {
+        accesoUsuarios[tokenId][usuario] = acceso;
+    }
+
+    function validarAcceso(address usuario, uint256 tokenId) external view returns (bool) {
+        return accesoUsuarios[tokenId][usuario];
+    }
+}
+
+
 // Oráculo para validación de acceso
 interface IOracle {
+    function actualizarAcceso(uint256 tokenId, address usuario, bool acceso) external;
     function validarAcceso(address usuario, uint256 tokenId) external view returns (bool);
 }
+
 
 contract PropiedadIntelectual is ERC721URIStorage {
     struct Archivo {
@@ -69,14 +84,15 @@ contract PropiedadIntelectual is ERC721URIStorage {
     mapping(uint256 => Transferencia[]) private _historialTransferencias;
     mapping(uint256 => Disputa[]) private _historialDisputas;
 
-    //mapping(uint256 => mapping(bytes32 => bool)) private _accessList;
-    //mapping(uint256 => mapping( bytes32 => uint256)) private _licenciasTemporales;
-
     // Mapeo para guardar el consentimiento explícito de los usuarios
     mapping(address => bool) private _consentimientoDado;
 
     // Mappings para claims
     mapping(uint256 => mapping(address => Claim)) private claims;
+
+    // Mapeo para guardar claves
+    mapping(uint256 => bytes32) private clavesCifrado; 
+    mapping(uint256 => uint256) private nonces;      
 
     // Dirección del oráculo
     address private oracleAddress;
@@ -148,6 +164,11 @@ contract PropiedadIntelectual is ERC721URIStorage {
         Claim storage claim = claims[tokenId][usuario];
         require(claim.acceso == true, "El claim no esta activo.");
 
+         // Revocar acceso en el oráculo
+        IOracle oracle = IOracle(oracleAddress);
+        oracle.actualizarAcceso(tokenId, usuario, false);
+        
+        incrementarNonce(tokenId);
         claim.acceso = false;
 
         emit ClaimRevocado(usuario, tokenId);
@@ -176,14 +197,11 @@ contract PropiedadIntelectual is ERC721URIStorage {
     }
 
     /* ===== Registro de Propiedad ===== */
-    function registro(string calldata hash_ipfs, string calldata titulo, string calldata descripcion) external {
+    function registro(string calldata hash_ipfs, string calldata titulo, string calldata descripcion, bytes32 claveCifrado) external {
         require(_consentimientoDado[msg.sender], "Debes aceptar los terminos y condiciones antes de registrar");
         require(bytes(hash_ipfs).length > 0, "Hash invalido");
         require(bytes(titulo).length > 0, "Titulo invalido");
         require(bytes(descripcion).length > 0, "Descripcion invalida");
-        
-        //bytes32 hashArchivo = keccak256(hash_ipfs);
-
 
         uint256 tokenId = ++_tokenIdCounter; 
         _safeMint(msg.sender, tokenId);
@@ -196,19 +214,17 @@ contract PropiedadIntelectual is ERC721URIStorage {
             propietarios.push(msg.sender);
         }
 
+        // Almacenar la clave de cifrado para este archivo
+        clavesCifrado[tokenId] = claveCifrado;
+
+        // Iniciar el nonce para este archivo (cada archivo tiene un nonce único)
+        nonces[tokenId] = 0;
+
         emisionClaims(msg.sender, tokenId, 0);
         emit RegistroRealizado(msg.sender, hash_ipfs, titulo, block.timestamp, tokenId);
     }
 
-    /* ===== Control de Acceso ===== */
-    /*function accesoNFT(uint256 tokenId, address usuario) external soloPropietario(tokenId){
-        bytes32 hashLicencia = keccak256(abi.encodePacked(usuario));
-        _accessList[tokenId][hashLicencia] = true;
-    }*/
-
     function comprobarAcceso(uint256 tokenId, address usuario) external view returns (bool) {
-        /*bytes32 hashLicencia = keccak256(abi.encodePacked(usuario));
-        return ownerOf(tokenId) == usuario || _accessList[tokenId][hashLicencia];*/
         return verificacionClaims(usuario, tokenId);
     }
 
@@ -220,87 +236,29 @@ contract PropiedadIntelectual is ERC721URIStorage {
         return ownerOf(tokenId) == msg.sender;    
     }
 
-    /* ===== Revocar acceso & licencia Temporal ===== */
-    /*function revocarAcceso(uint256 tokenId, address usuario) external soloPropietario(tokenId) {
-        // Verificar si tiene acceso temporal activo
-        bytes32 hashLicencia = keccak256(abi.encodePacked(usuario));
-        if (_licenciasTemporales[tokenId][hashLicencia] > block.timestamp) {
-            _licenciasTemporales[tokenId][hashLicencia] = 0; // Invalida la licencia temporal
-        }
-        _accessList[tokenId][hashLicencia] = false;     
-    }*/
-
-    /* ===== Licencias Temporales ===== */
-    function darLicenciaTemporal(uint256 tokenId, address usuario, uint256 duracionLicencia) external soloPropietario(tokenId) {
-        // Calcular el hash de la dirección del usuario
-        bytes32 hashLicencia = keccak256(abi.encodePacked(usuario));
-        
-        _licenciasTemporales[tokenId][hashLicencia] = block.timestamp + duracionLicencia;
-        _accessList[tokenId][hashLicencia] = true;
-    }
-
-    function verificarLicenciaTemporal(uint256 tokenId, address usuario) external returns (bool) {
-        bytes32 usuarioHash = keccak256(abi.encodePacked(usuario));
-        bool tieneAcceso = _accessList[tokenId][usuarioHash];
-        require(tieneAcceso, "No tienes acceso al recurso");
-        if (_accessList[tokenId][usuarioHash] && block.timestamp < _licenciasTemporales[tokenId][usuarioHash]) {
-            return true;
-        }
-        _accessList[tokenId][usuarioHash] = false;
-        return false;
-    }
-
-    // Verificar si queda menos del 10% de la duración de la licencia
-    function verificarAvisoLicenciaTemporal(uint256 tokenId, address usuario) external view returns (bool) {
-        bytes32 usuarioHash = keccak256(abi.encodePacked(usuario));
-        // Verificar que el usuario tiene una licencia temporal activa
-        require(_accessList[tokenId][usuarioHash], "No tienes acceso al recurso");
-        require(block.timestamp < _licenciasTemporales[tokenId][usuarioHash], "La licencia temporal ha expirado");
-
-        // Calcular el tiempo restante de la licencia
-        uint256 tiempoRestante = _licenciasTemporales[tokenId][usuarioHash] - block.timestamp;
-        uint256 duracionTotal = _licenciasTemporales[tokenId][usuarioHash] - (block.timestamp - tiempoRestante);
-        
-        // Comprobar si queda menos del 10% de la duración total de la licencia
-        if (tiempoRestante <= (duracionTotal / 10)) {
-            return true;
-        }
-        return false; 
-    }
-
-    /*================== Visualizar licencias & temporales ===============*/
-    function verLicenciasDeArchivo(uint256 tokenId) external view soloPropietario(tokenId) returns (Licencia[] memory) {
-        // Contar cuántas licencias existen para este archivo
-        uint256 totalLicencias = 0;
-        for (uint256 i = 0; i < propietarios.length; i++) {
-             bytes32 usuarioHash = keccak256(abi.encodePacked(propietarios[i]));
-            if (_accessList[tokenId][usuarioHash]) {
-                totalLicencias++;
+    function listarClaimsArchivo (uint256 tokenId) public view soloPropietario(tokenId) returns(Claim[] memory) {
+        uint claimsTotales = 0;
+        for (uint256 i=0; i<propietarios.length;i++){
+            address usuario = propietarios[i];
+            if (claims[tokenId][usuario].acceso) {
+                claimsTotales++;
             }
         }
 
-        // Crear un array para almacenar las licencias
-        Licencia[] memory licencias = new Licencia[](totalLicencias);
+        Claim[] memory listaClaims = new Claim[](claimsTotales);
         uint256 index = 0;
 
-        // Rellenar el array con los detalles de las licencias
         for (uint256 i = 0; i < propietarios.length; i++) {
-            bytes32 usuarioHash = keccak256(abi.encodePacked(propietarios[i]));
-            if (_accessList[tokenId][usuarioHash]) {
-                licencias[index] = Licencia({
-                    hashLicencia: usuarioHash,
-                    esTemporal: _licenciasTemporales[tokenId][usuarioHash] > block.timestamp, // Es temporal si tiene tiempo de expiración
-                    tiempoExpiracion: _licenciasTemporales[tokenId][usuarioHash] // 0 para licencias permanentes
-                });
+            address usuario = propietarios[i];
+            Claim storage claim = claims[tokenId][usuario];
+            if (claim.acceso) {
+                listaClaims[index] = claim;
                 index++;
             }
         }
 
-        return licencias;
+        return listaClaims;
     }
-
-
-
 
     /* ===== Transferencia de Propiedad ===== */
     
@@ -419,5 +377,16 @@ contract PropiedadIntelectual is ERC721URIStorage {
             }
         }
         return allArchives;
+    }
+
+    /* ===== Incrementar Nonce (al revocar acceso) ===== */
+    function incrementarNonce(uint256 tokenId) private {
+        nonces[tokenId]++;
+    }
+
+    /* ===== Obtener Clave Derivada con Nonce ===== */
+    function obtenerClaveConNonce(uint256 tokenId, address usuario) external view returns (bytes32) {
+        require(verificacionClaims(usuario, tokenId), "No tienes acceso");
+        return keccak256(abi.encodePacked(clavesCifrado[tokenId], nonces[tokenId]));
     }
 }
