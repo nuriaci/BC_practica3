@@ -1,10 +1,13 @@
 import React, { useState } from "react";
 import { ethers } from "ethers";
 import { addresses, abis } from "../contracts";
-import { ArrowsRightLeftIcon, CheckCircleIcon, XCircleIcon, DocumentMagnifyingGlassIcon, FingerPrintIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ArrowsRightLeftIcon, CheckCircleIcon, XCircleIcon, DocumentMagnifyingGlassIcon, FingerPrintIcon, ClockIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { create } from "kubo-rpc-client"; // Cliente IPFS
 
 // Proveedor de Ethereum
 const defaultProvider = new ethers.providers.Web3Provider(window.ethereum);
+const client = create("/ip4/127.0.0.1/tcp/5002"); // URL del nodo IPFS local
+
 
 // Instancia del contrato en Ethereum
 const propietarioContract = new ethers.Contract(
@@ -40,7 +43,50 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     { title: "Consultar certificado", action: () => setActiveOption("consultar"), icon: <DocumentMagnifyingGlassIcon className="w-8 h-8" /> },
     { title: "Auditar archivo", action: () => setActiveOption("auditar"), icon: <FingerPrintIcon className="w-8 h-8" /> },
     { title: "Dar licencia temporal", action: () => setActiveOption("licencia"), icon: <ClockIcon className="w-8 h-8" /> },
+    { title: "Eliminar archivo", action: () => setActiveOption("eliminar"), icon: <TrashIcon className="w-8 h-8" /> },
   ];
+
+
+  const eliminarArchivoDeIPFS = async (cid) => {
+    try {
+      await client.pin.rm(cid); // Desanclar el archivo
+      await client.repo.gc();   // Hacer limpieza de la memoria local
+      console.log(`Archivo con CID ${cid} eliminado de IPFS local.`);
+    } catch (error) {
+      console.error(`Error al eliminar el archivo de IPFS: ${error.message}`);
+      throw new Error("No se pudo eliminar el archivo de IPFS.");
+    }
+  };
+
+  const eliminarArchivo = async (e) => {
+    e.preventDefault();
+    setErrorMessage("");
+
+    try {
+      const signer = defaultProvider.getSigner();
+      const contratoConSigner = propietarioContract.connect(signer);
+      const tx = await contratoConSigner.eliminarArchivo(tokenId);
+      await tx.wait();
+
+      alert("Archivo eliminado del contrato. Eliminando de IPFS...");
+
+      // Eliminar el archivo de IPFS
+      propietarioContract.once("ArchivoEliminado", async (hash_ipfs) => {
+        try {
+          await eliminarArchivoDeIPFS(hash_ipfs);
+          alert("Archivo eliminado de IPFS.");
+        } catch (error) {
+          console.error("Error al eliminar archivo de IPFS:", error.message);
+          setErrorMessage("No se pudo eliminar el archivo de IPFS.");
+        }
+      });
+
+      closeModal(); // Cerrar el modal después de completar la eliminación
+    } catch (error) {
+      console.error("Error al eliminar el archivo:", error.message);
+      setErrorMessage("Error al eliminar el archivo. Asegúrate de ser el propietario.");
+    }
+  };
 
 
   /*Transferir propiedad */
@@ -204,6 +250,21 @@ function RecursosPropietario({ closeModal, selectedFile }) {
 
   const renderOptionContent = () => {
     switch (activeOption) {
+      case "eliminar":
+        return (
+          <>
+            <h3 className="text-lg font-semibold">¿Estás seguro de que deseas eliminar este archivo?</h3>
+            <form onSubmit={eliminarArchivo}>
+              <button
+                type="submit"
+                className="bg-red-600 hover:bg-red-700 text-white mt-4 py-2 px-4 rounded w-full"
+              >
+                Confirmar eliminación
+              </button>
+              {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
+            </form>
+          </>
+        );
       case "transferir":
         return (<>
           <form onSubmit={transferirPropiedad}>
@@ -380,18 +441,24 @@ function RecursosPropietario({ closeModal, selectedFile }) {
         >
           &times;
         </button>
+
         {activeOption && (
           <button
-            onClick={() => setActiveOption(null)}  // Reset to main menu
+            onClick={() => setActiveOption(null)}  // Resetear al menú principal
             className="absolute top-2 left-2 text-gray-200 hover:text-white text-xl transition-all"
           >
-            &larr; {/* Left arrow for going back */}
+            &larr; {/* Flecha para volver */}
           </button>
         )}
-        <h2 className="text-2xl font-semibold mb-4 text-center">{activeOption ? "Detalle de opción" : "Opciones para el propietario"}</h2>
+
+        <h2 className="text-2xl font-semibold mb-4 text-center">
+          {activeOption ? "Detalle de opción" : "Opciones para el propietario"}
+        </h2>
+
         {renderOptionContent()}
       </div>
     </div>
+
   );
 }
 

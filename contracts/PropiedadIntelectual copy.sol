@@ -102,6 +102,8 @@ contract PropiedadIntelectual is ERC721URIStorage {
     event RegistroRealizado(address indexed propietario, string hash_ipfs, string titulo, uint256 fecha, uint256 tokenId);
     event TransferenciaPropiedad(bytes32 hashTransferencia, uint256 fecha);
     event DisputaRegistrada(bytes32 hashDisputa, string motivo, uint256 fecha);
+    event ArchivoEliminado(string hash_ipfs, uint256 tokenId);
+
 
     // Eventos para claims
     event ClaimEmitido(address indexed usuario, uint256 tokenId, uint256 duracion);
@@ -130,20 +132,24 @@ contract PropiedadIntelectual is ERC721URIStorage {
     }
     
     /* ===== Derecho al Olvido ===== */
-    function eliminarArchivo(uint256 tokenId) external soloPropietario(tokenId){
-        //require(ownerOf(tokenId) == msg.sender, "Solo el propietario puede eliminar este archivo");
-        // Eliminar el archivo del mapeo del propietario
+ 
+    function eliminarArchivo(uint256 tokenId) external soloPropietario(tokenId) {
+        // Obtener el hash del archivo
+        string memory hash_ipfs;
         Archivo[] storage archivos = _archivos[msg.sender];
         for (uint256 i = 0; i < archivos.length; i++) {
             if (archivos[i].tokenId == tokenId) {
+                hash_ipfs = archivos[i].hash;
                 archivos[i] = archivos[archivos.length - 1];
                 archivos.pop();
                 break;
             }
         }
 
-        _burn(tokenId); // Eliminar el NFT asociado
+        _burn(tokenId);
+        emit ArchivoEliminado(hash_ipfs, tokenId);
     }
+
 
     /* Funciones relacionadas con los verifiable claims */
     ////////////// EMITIR CLAIMS

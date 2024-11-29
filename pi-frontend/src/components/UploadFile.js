@@ -75,39 +75,39 @@ function UploadFile({ closeModal }) {
     if (!file || file.length === 0) {
       throw new Error("El archivo no es válido o está vacío.");
     }
-  
+
     console.log("Tipo de archivo:", typeof file, file);
-  
+
     // Convertir el archivo a base64
     const fileBase64 = CryptoJS.enc.Base64.stringify(CryptoJS.lib.WordArray.create(file));
     if (!fileBase64) {
       throw new Error("No se pudo convertir el archivo a base64.");
     }
     console.log("Archivo en base64:", fileBase64);
-  
+
     // Generar una clave aleatoria de 32 bytes
     const key = CryptoJS.lib.WordArray.random(32);
     const keyHex = CryptoJS.enc.Hex.stringify(key); // Convertir clave a hexadecimal
     console.log("Clave generada (hex):", keyHex);
-  
+
     if (!keyHex || keyHex.length !== 64) {
       throw new Error("La clave generada no es válida.");
     }
-  
+
     // Cifrar el archivo usando AES
     const cipheredFile = CryptoJS.AES.encrypt(fileBase64, keyHex).toString();
     if (!cipheredFile) {
       throw new Error("El archivo no se pudo cifrar.");
     }
     console.log("Archivo cifrado:", cipheredFile);
-  
+
     // Convertir el archivo cifrado a Buffer
     const cipheredFileBuffer = Buffer.from(cipheredFile, 'utf-8');
     console.log("Buffer del archivo cifrado:", cipheredFileBuffer);
-  
+
     return { cipheredFileBuffer, key: keyHex };
   };
-  
+
 
   // Subir archivo a IPFS y registrarlo en Ethereum
   const handleSubmit = async (e) => {
@@ -136,7 +136,7 @@ function UploadFile({ closeModal }) {
 
       const keyHex = `0x${key.toString('hex')}`; // Agregar el prefijo 0x
       // Cliente IPFS (conexión a tu nodo local)
-      const client = await create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
+      const client = await create("/ip4/127.0.0.1/tcp/5002"); // Conexión IPFS local
 
       // Subir el archivo cifrado a IPFS
       const result = await client.add(cipheredFileBuffer);
