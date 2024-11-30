@@ -159,11 +159,11 @@ function Dashboard() {
       const contractWithSigner = registroContract.connect(signer);
 
       // Verificar si el archivo pertenece al usuario
-      const esPropietario = await contractWithSigner.verifyProperty(file.tokenId, address);
+      const esPropietario = await registroContract.verifyProperty(file.tokenId, address);
       console.log(file.tokenId)
 
       // Verificar si el usuario tiene permisos (propietario o compartido)
-      const tieneAcceso = await contractWithSigner.comprobarAcceso(file.tokenId, address);
+      const tieneAcceso = await registroContract.comprobarAcceso(file.tokenId, address);
       console.log(tieneAcceso);
 
       if (!tieneAcceso) {

@@ -130,18 +130,28 @@ function RecursosPropietario({ closeModal, selectedFile }) {
       const signer = defaultProvider.getSigner();
       const contratoConSigner = propietarioContract.connect(signer);
       const accesos = await contratoConSigner.listarClaimsArchivo(tokenId);
+      const listaAccesos = await accesos.wait()
+      // Ahora buscamos el evento 'AccesosListados' dentro de los logs de la transacción
+      const event = listaAccesos.events?.find(event => event.event === "AccesosListados");
 
-      // Filtrar solo los accesos donde acceso es true
-      const accesosConAcceso = accesos.filter(claim => claim.acceso === true);
-      
-      const accesosFormateados = accesosConAcceso.map(claim => ({
-        ...claim,
-        usuario: claim.usuario, // Dirección del usuario
-        fecha: claim.fecha.toString(), // Convertir BigNumber a string
-        duracion: claim.duracion.toString(), // Convertir BigNumber a string
-      }));
+      // Si encontramos el evento, extraemos los claims
+      if (event && event.args) {
+        const accesos = event.args.claims;
 
-      setAccesosPermitidos(accesosFormateados);
+        // Formatear los datos devueltos
+        const accesosFormateados = accesos.map(claim => ({
+          usuario: claim.usuario, // Dirección del usuario
+          acceso: claim.acceso,   // Booleano indicando si tiene acceso
+          duracion: claim.duracion.toString(), // Convertir BigNumber a string
+          fecha: claim.fecha.toString() // Si tiene un campo de fecha (BigNumber) convertirlo
+        }));
+
+        // Filtrar los accesos válidos
+        const accesosConAcceso = accesosFormateados.filter(claim => claim.acceso === true);
+
+        // Actualizar el estado con los accesos permitidos
+        setAccesosPermitidos(accesosConAcceso);
+      } 
     } catch (error) {
       console.error("Error al listar los accesos:", error.message);
       setErrorMessage("Error al obtener la lista de accesos.");
