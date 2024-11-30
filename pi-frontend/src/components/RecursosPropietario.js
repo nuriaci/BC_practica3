@@ -33,7 +33,8 @@ function RecursosPropietario({ closeModal, selectedFile }) {
   /* Consultar certificado */
   const [hashActualCertificado, sethashActualCertificado] = useState("");
   const [certificado, setCertificado] = useState(null);
-
+  /* Listar accesos a archivo */
+  const [accesosPermitidos, setAccesosPermitidos] = useState([]);
 
   const functionalities = [
     { title: "Transferir propiedad", action: () => setActiveOption("transferir"), icon: <ArrowsRightLeftIcon className="w-8 h-8" /> },
@@ -42,6 +43,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     { title: "Consultar certificado", action: () => setActiveOption("consultar"), icon: <DocumentMagnifyingGlassIcon className="w-8 h-8" /> },
     { title: "Auditar archivo", action: () => setActiveOption("auditar"), icon: <FingerPrintIcon className="w-8 h-8" /> },
     { title: "Dar licencia temporal", action: () => setActiveOption("licencia"), icon: <ClockIcon className="w-8 h-8" /> },
+    { title: "Listar accesos permitidos", action: () => setActiveOption("listaraccesos"), icon: <ClockIcon className="w-8 h-8" /> },
     { title: "Eliminar archivo", action: () => setActiveOption("eliminar"), icon: <TrashIcon className="w-8 h-8" /> },
   ];
 
@@ -122,6 +124,30 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     }
   };
 
+  /* Listar accesos */
+  const listarAccesos = async () => {
+    try {
+      const signer = defaultProvider.getSigner();
+      const contratoConSigner = propietarioContract.connect(signer);
+      const accesos = await contratoConSigner.listarClaimsArchivo(tokenId);
+
+      // Filtrar solo los accesos donde acceso es true
+      const accesosConAcceso = accesos.filter(claim => claim.acceso === true);
+      
+      const accesosFormateados = accesosConAcceso.map(claim => ({
+        ...claim,
+        usuario: claim.usuario, // Dirección del usuario
+        fecha: claim.fecha.toString(), // Convertir BigNumber a string
+        duracion: claim.duracion.toString(), // Convertir BigNumber a string
+      }));
+
+      setAccesosPermitidos(accesosFormateados);
+    } catch (error) {
+      console.error("Error al listar los accesos:", error.message);
+      setErrorMessage("Error al obtener la lista de accesos.");
+    }
+  }
+
   /*Transferir propiedad */
   const transferirPropiedad = async (e) => {
     e.preventDefault();
@@ -161,8 +187,8 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     try {
       const signer = defaultProvider.getSigner();
       const contratoConSigner = propietarioContract.connect(signer);
-
-      const tx = await contratoConSigner.darLicenciaTemporal(tokenId, direccionUsuario, duration);
+      const duracionEnDias = duration *86400;
+      const tx = await contratoConSigner.darLicenciaTemporal(tokenId, direccionUsuario, duracionEnDias);
       await tx.wait();
 
       alert("Licencia temporal otorgada con éxito");
@@ -189,7 +215,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
       const signer = defaultProvider.getSigner();
       const contratoConSigner = propietarioContract.connect(signer);
 
-      const tx = await contratoConSigner.accesoNFT(tokenId, usuarioAcceso);
+      const tx = await contratoConSigner.darAcceso(tokenId, usuarioAcceso);
       await tx.wait();
 
       alert("Acceso otorgado con éxito");
@@ -218,7 +244,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
       const signer = defaultProvider.getSigner();
       const contratoConSigner = propietarioContract.connect(signer);
 
-      const tx = await contratoConSigner.revocarAcceso(tokenId, usuarioRevocar);
+      const tx = await contratoConSigner.revocacionClaims(usuarioRevocar, tokenId);
       await tx.wait();
 
       alert("Acceso revocado con éxito");
@@ -441,6 +467,27 @@ function RecursosPropietario({ closeModal, selectedFile }) {
             </form>
           </>
         );
+        case "listaraccesos":
+          return (
+            <>
+              {accesosPermitidos.length > 0 ? (
+                <div className="mt-4">
+                  <h3 className="font-semibold text-lg">Usuarios con acceso:</h3>
+                  <ul>
+                    {accesosPermitidos.map((usuario, index) => (
+                      <li key={index} className="text-sm text-white">
+                        <p><strong>Dirección:</strong> {usuario.usuario}</p>
+                        <p><strong>Fecha de acceso:</strong> {new Date(parseInt(usuario.fecha) * 1000).toLocaleString()}</p>
+                        <p><strong>Duración:</strong> {usuario.duracion} días</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="mt-4 text-red-500">{errorMessage || "No hay usuarios con acceso"}</p>
+              )}
+            </>
+          );
       default:
         return (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
@@ -464,6 +511,12 @@ function RecursosPropietario({ closeModal, selectedFile }) {
         );
     }
   };
+
+  useEffect(() => {
+    if (activeOption === "listaraccesos") {
+      listarAccesos();  
+    }
+  }, [activeOption]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">

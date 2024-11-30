@@ -83,6 +83,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
     mapping(address => Archivo[]) private _archivos;
     mapping(uint256 => Transferencia[]) private _historialTransferencias;
     mapping(uint256 => Disputa[]) private _historialDisputas;
+    mapping(uint256 => address[]) private usuariosConAcceso;
 
     // Mapeo para guardar el consentimiento explícito de los usuarios
     mapping(address => bool) private _consentimientoDado;
@@ -152,8 +153,11 @@ contract PropiedadIntelectual is ERC721URIStorage {
 
 
     /* Funciones relacionadas con los verifiable claims */
-    ////////////// EMITIR CLAIMS
-    function emisionClaims(address usuario, uint256 tokenId, uint256 duracionClaim) public soloPropietario (tokenId) {
+   // Función para emitir un claim de acceso a un archivo para un usuario
+    function emisionClaims(address usuario, uint256 tokenId, uint256 duracionClaim) public soloPropietario(tokenId) {
+        // Solo se agrega el claim si el usuario no está en la lista ya
+        require(!usuarioTieneAcceso(usuario, tokenId), "El usuario ya tiene acceso");
+
         claims[tokenId][usuario] = Claim({
             usuario: usuario,
             tokenId: tokenId,
@@ -162,48 +166,72 @@ contract PropiedadIntelectual is ERC721URIStorage {
             acceso: true
         });
 
+        usuariosConAcceso[tokenId].push(usuario); // Añadir el usuario a la lista de accesos
         emit ClaimEmitido(usuario, tokenId, duracionClaim);
     }
 
-    ////////////// REVOCAR CLAIMS
-    function revocacionClaims(address usuario, uint256 tokenId) public soloPropietario (tokenId){
+    // Función para verificar si un usuario tiene acceso
+    function usuarioTieneAcceso(address usuario, uint256 tokenId) public view returns (bool) {
+        // Verificar si el usuario está en la lista de acceso del archivo
+        for (uint256 i = 0; i < usuariosConAcceso[tokenId].length; i++) {
+            if (usuariosConAcceso[tokenId][i] == usuario) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Función para revocar el acceso de un usuario
+    function revocacionClaims(address usuario, uint256 tokenId) public soloPropietario(tokenId) {
         Claim storage claim = claims[tokenId][usuario];
         require(claim.acceso == true, "El claim no esta activo.");
 
-         // Revocar acceso en el oráculo
+        // Revocar el acceso en el oráculo
         IOracle oracle = IOracle(oracleAddress);
         oracle.actualizarAcceso(tokenId, usuario, false);
-        
-        incrementarNonce(tokenId);
+
         claim.acceso = false;
-
-        // Re-emitir claims a todos los usuarios que deberían mantener acceso
-        for (uint256 i = 0; i < propietarios.length; i++) {
-            address user = propietarios[i];
-            Claim storage newClaim = claims[tokenId][usuario];
-
-            // Si el claim estaba activo, generamos un nuevo claim
-            if (newClaim.acceso == false) {
-                // Crear nuevo claim con acceso renovado
-                emisionClaims(user, tokenId, newClaim.duracion);
-            }
-        }
-
+        eliminarUsuarioDeAccesos(tokenId, usuario); // Eliminar al usuario de la lista de acceso
         emit ClaimRevocado(usuario, tokenId);
     }
 
-    ////////////// VERIFICAR CLAIMS 
-    function verificacionClaims(address usuario, uint256 tokenId) public view returns (bool){
+    // Función para eliminar un usuario de la lista de acceso
+    function eliminarUsuarioDeAccesos(uint256 tokenId, address usuario) private {
+        uint256 indexToRemove = type(uint256).max;
+        // Buscar el índice del usuario a eliminar
+        for (uint256 i = 0; i < usuariosConAcceso[tokenId].length; i++) {
+            if (usuariosConAcceso[tokenId][i] == usuario) {
+                indexToRemove = i;
+                break;
+            }
+        }
+
+        // Si se encontró el usuario en la lista, eliminarlo
+        if (indexToRemove != type(uint256).max) {
+            // Reemplazar el usuario eliminado con el último usuario de la lista
+            usuariosConAcceso[tokenId][indexToRemove] = usuariosConAcceso[tokenId][usuariosConAcceso[tokenId].length - 1];
+            usuariosConAcceso[tokenId].pop();  // Eliminar el último elemento (reemplazando el usuario removido)
+        }
+    }
+
+    // Función para listar los usuarios con acceso a un archivo
+    function listarUsuariosConAcceso(uint256 tokenId) public view returns (address[] memory) {
+        return usuariosConAcceso[tokenId];
+    }
+
+    // Función para verificar los claims activos de los usuarios
+    function verificacionClaims(address usuario, uint256 tokenId) public view returns (bool) {
         Claim storage claim = claims[tokenId][usuario];
 
         if (!claim.acceso || (claim.duracion > 0 && block.timestamp > claim.duracion)) {
             return false;
         }
 
-         // Validar acceso con el oráculo
+        // Validar acceso con el oráculo
         IOracle oracle = IOracle(oracleAddress);
         return oracle.validarAcceso(usuario, tokenId);
     }
+
 
     /////////////// RENOVAR CLAIMS
     function renovarClaim(address usuario, uint256 tokenId, uint256 nuevaDuracion) public soloPropietario(tokenId){
@@ -242,8 +270,8 @@ contract PropiedadIntelectual is ERC721URIStorage {
         emit RegistroRealizado(msg.sender, hash_ipfs, titulo, block.timestamp, tokenId);
     }
 
-    function concederAcceso(uint256 tokenId) external view returns (bytes32) {
-        return obtenerClaveConNonce(tokenId, msg.sender);
+    function concederAcceso(address usuario, uint256 tokenId) external soloPropietario(tokenId) {
+        emisionClaims(usuario, tokenId, 0);
     }
 
     function comprobarAcceso(uint256 tokenId, address usuario) external view returns (bool) {
@@ -262,22 +290,39 @@ contract PropiedadIntelectual is ERC721URIStorage {
         emisionClaims(usuario, tokenId, duracionLicencia);
     }
 
+    function descifrarArchivo(uint256 tokenId) external view returns (bytes32) {
+        // Verificar que el usuario tiene un claim válido
+        require(verificacionClaims(msg.sender, tokenId), "No tienes acceso");
+
+        // Retornar la clave derivada con el nonce actual
+        return obtenerClaveConNonce(tokenId, msg.sender);
+    }
+
     function listarClaimsArchivo (uint256 tokenId) public view soloPropietario(tokenId) returns(Claim[] memory) {
         uint claimsTotales = 0;
-        for (uint256 i=0; i<propietarios.length;i++){
-            address usuario = propietarios[i];
-            if (claims[tokenId][usuario].acceso) {
+        
+        // Recorrer todas las direcciones de usuarios con acceso
+        for (uint256 i = 0; i < usuariosConAcceso[tokenId].length; i++) {
+            address usuario = usuariosConAcceso[tokenId][i];
+            Claim storage claim = claims[tokenId][usuario];
+
+            // Verificar que el claim esté activo y no haya expirado
+            if (claim.acceso && (claim.duracion == 0 || block.timestamp <= claim.duracion)) {
                 claimsTotales++;
             }
         }
 
+        // Crear el arreglo para los claims válidos
         Claim[] memory listaClaims = new Claim[](claimsTotales);
         uint256 index = 0;
 
-        for (uint256 i = 0; i < propietarios.length; i++) {
-            address usuario = propietarios[i];
+        // Llenar el arreglo con los claims válidos
+        for (uint256 i = 0; i < usuariosConAcceso[tokenId].length; i++) {
+            address usuario = usuariosConAcceso[tokenId][i];
             Claim storage claim = claims[tokenId][usuario];
-            if (claim.acceso) {
+
+            // Verificar si el claim sigue siendo válido
+            if (claim.acceso && (claim.duracion == 0 || block.timestamp <= claim.duracion)) {
                 listaClaims[index] = claim;
                 index++;
             }

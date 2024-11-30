@@ -136,7 +136,7 @@ function UploadFile({ closeModal }) {
 
       const keyHex = `0x${key.toString('hex')}`; // Agregar el prefijo 0x
       // Cliente IPFS (conexión a tu nodo local)
-      const client = await create("/ip4/127.0.0.1/tcp/5002"); // Conexión IPFS local
+      const client = await create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
 
       // Subir el archivo cifrado a IPFS
       const result = await client.add(cipheredFileBuffer);

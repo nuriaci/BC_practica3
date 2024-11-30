@@ -467,11 +467,16 @@
                 "type": "bool"
             }
         ],
-        "stateMutability": "view",
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
         "inputs": [
+            {
+                "internalType": "address",
+                "name": "usuario",
+                "type": "address"
+            },
             {
                 "internalType": "uint256",
                 "name": "tokenId",
@@ -479,14 +484,8 @@
             }
         ],
         "name": "concederAcceso",
-        "outputs": [
-            {
-                "internalType": "bytes32",
-                "name": "",
-                "type": "bytes32"
-            }
-        ],
-        "stateMutability": "view",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -509,6 +508,25 @@
         ],
         "name": "darLicenciaTemporal",
         "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "descifrarArchivo",
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
         "stateMutability": "nonpayable",
         "type": "function"
     },
@@ -767,6 +785,25 @@
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "listarUsuariosConAcceso",
+        "outputs": [
+            {
+                "internalType": "address[]",
+                "name": "",
+                "type": "address[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "name",
         "outputs": [
@@ -800,7 +837,7 @@
                 "type": "bytes32"
             }
         ],
-        "stateMutability": "view",
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -1162,6 +1199,30 @@
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "usuario",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "usuarioTieneAcceso",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "tokenId",
                 "type": "uint256"
@@ -1216,7 +1277,7 @@
                 "type": "bool"
             }
         ],
-        "stateMutability": "view",
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {

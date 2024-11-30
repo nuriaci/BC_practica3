@@ -3,6 +3,7 @@ import UploadFile from "./UploadFile";
 import RegistrarDisputa from "./RegistrarDisputa";
 import VisualizarDisputas from "./VisualizarDisputas";
 import RecursosPropietario from "./RecursosPropietario";
+import RecursosAccesoLicencia from "./RecursosAccesoLicencia";
 import { addresses, abis } from "../contracts";
 import { ethers } from "ethers";
 import axios from 'axios';
@@ -67,7 +68,7 @@ function Dashboard() {
       setLoading(true);
       const signer = await defaultProvider.getSigner();
       const address = await signer.getAddress();
-
+      const contratoConSigner = await registroContract.connect(signer);
       // Obtener todos los archivos desde el contrato
       const archivos = await registroContract.listarTodosArchivos();
       setArchivosCount(archivos.length);
@@ -75,10 +76,10 @@ function Dashboard() {
       // Procesar los archivos y verificar si el usuario tiene acceso
       const archivosProcesados = await Promise.all(
         archivos.map(async (archivo) => {
-          const esPropietario = await registroContract.verifyMyProperty(archivo[4]);
+          const esPropietario = await contratoConSigner.verifyMyProperty(archivo[4]);
           console.log(esPropietario);
-          const tieneAcceso = esPropietario || (await registroContract.comprobarAcceso(archivo[4], address));
-          const direccionPropietario = await registroContract.ownerOf(archivo[4]);
+          const tieneAcceso = esPropietario || (await contratoConSigner.comprobarAcceso(archivo[4], address));
+          const direccionPropietario = await contratoConSigner.ownerOf(archivo[4]);
           return {
             titulo: archivo[0],
             descripcion: archivo[1],
@@ -147,17 +148,6 @@ function Dashboard() {
     }
   };
 
-  const obtenerArchivoDeIPFS = async (hash) => {
-    try {
-      const ipfsURL = `http://127.0.0.1:8080/ipfs/${hash}`;
-      const response = await axios.get(ipfsURL);
-      return response.data;
-    } catch (error) {
-      console.error('Error al obtener archivo: ', error.message);
-      setErrorMessage('No se pudo obtener el archivo desde IPFS.');
-    }
-  };
-
   const handleFileClick = async (file) => {
     console.log("Archivo seleccionado:", file);
     console.log("Hash:", file.hash);
@@ -166,23 +156,32 @@ function Dashboard() {
     try {
       const signer = await defaultProvider.getSigner();
       const address = await signer.getAddress();
+      const contractWithSigner = registroContract.connect(signer);
 
       // Verificar si el archivo pertenece al usuario
-      const esPropietario = await registroContract.verifyProperty(file.tokenId, address) || registroContract.comprobarAcceso(file.tokenId, address);
+      const esPropietario = await contractWithSigner.verifyProperty(file.tokenId, address);
       console.log(file.tokenId)
 
       // Verificar si el usuario tiene permisos (propietario o compartido)
-      const tieneAcceso = esPropietario;
+      const tieneAcceso = await contractWithSigner.comprobarAcceso(file.tokenId, address);
+      console.log(tieneAcceso);
 
       if (!tieneAcceso) {
-        setErrorMessage('No eres el propietario.'); // Mostrar mensaje de error
+        setErrorMessage('No eres el propietario o no tienes acceso.'); // Mostrar mensaje de error
         return;
       }
-
-      // Descargar archivo desde IPFS
-      openModal("recursosPropietario")
-      setSelectedFile(file); // Actualizar archivo seleccionado
-      setErrorMessage(''); // Limpiar mensaje de error
+      else if (esPropietario) {
+        // Descargar archivo desde IPFS
+        openModal("recursosPropietario")
+        setSelectedFile(file); // Actualizar archivo seleccionado
+        setErrorMessage(''); // Limpiar mensaje de error
+      } else if (tieneAcceso) {
+        // Descargar archivo desde IPFS
+        openModal("recursosAccesoLicencia")
+        setSelectedFile(file); // Actualizar archivo seleccionado
+        setErrorMessage(''); // Limpiar mensaje de error
+      }
+      
     } catch (error) {
       console.error('Error al procesar el archivo:', error.message);
       setErrorMessage('Hubo un problema al acceder al archivo.'); // Mensaje de error
@@ -387,6 +386,14 @@ function Dashboard() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-blur">
           <div className="bg-blue-gray-900 text-white rounded-lg shadow-lg p-8 w-96 relative max-w-lg mx-auto">
             <RecursosPropietario closeModal={closeModal} selectedFile={selectedFile} />
+          </div>
+        </div>
+      )}
+
+      {isModalOpen && modalType === "recursosAccesoLicencia" && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-blur">
+          <div className="bg-blue-gray-900 text-white rounded-lg shadow-lg p-8 w-96 relative max-w-lg mx-auto">
+            <RecursosAccesoLicencia closeModal={closeModal} selectedFile={selectedFile} />
           </div>
         </div>
       )}
