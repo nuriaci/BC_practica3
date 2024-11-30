@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { addresses, abis } from "../contracts";
 import { ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
 import { create } from "kubo-rpc-client"; // Cliente IPFS
-import { AES, enc } from "crypto-js";
+import { AES, enc } from "crypto-js";  // No necesitamos SHA3, ya que la clave viene del contrato
 import { Buffer } from "buffer";
 
 // Proveedor de Ethereum
@@ -27,50 +27,38 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
     { title: "Acceder al archivo", action: () => setActiveOption("acceso"), icon: <ArrowsRightLeftIcon className="w-8 h-8" /> },
   ];
 
-  // Obtener clave de descifrado
+  // Obtener la clave de descifrado (ya derivada en el contrato)
   const obtenerClaveDescifrado = async () => {
     try {
       const signer = defaultProvider.getSigner();
       const contratoConSigner = propietarioContract.connect(signer);
-      const txReceipt = await contratoConSigner.obtenerClaveConNonce(tokenId, "0x67139abeb5518d538924318CdA1797119844d3CA");
-  
-      console.log("Recibo de transacción:", txReceipt);  // Verificar la transacción completa
-  
-      // Extraer la clave de descifrado del campo 'data'
-      const claveDescifrado = txReceipt.data;
-  
-      if (!claveDescifrado) {
-        console.error("No se encontró la clave de descifrado en la transacción.");
-        setErrorMessage("No se encontró la clave de descifrado.");
-        return null;
-      }
-  
-      console.log("Clave de descifrado extraída:", claveDescifrado);  // Verificar la clave extraída
-  
-      // La clave es probablemente un valor hexadecimal, asegúrate de que está en formato correcto
-      return claveDescifrado;
+
+      // Llamamos al contrato para obtener la clave asociada al tokenId y el address del usuario
+      const claveDescifrada = await contratoConSigner.obtenerClaveConNonce(tokenId, signer.getAddress());  // El contrato ya devuelve la clave derivada
+      console.log(claveDescifrada)
+      return claveDescifrada.data;
     } catch (error) {
       console.error("Error al obtener la clave de descifrado:", error.message);
       setErrorMessage("No se pudo obtener la clave de descifrado.");
       return null;
     }
   };
-  
 
+  // Obtener el archivo de IPFS
   const obtenerArchivoDeIPFS = async (hash) => {
     const client = create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
     try {
       const archivoGenerator = client.cat(hash);
       let archivoCifrado = [];
-  
+
       // Consumir el AsyncGenerator y almacenar los bloques en un array
       for await (const chunk of archivoGenerator) {
         archivoCifrado.push(chunk);  // Almacena los chunks binarios
       }
-  
+
       // Unir todos los bloques en un solo Buffer
       const archivoBuffer = Buffer.concat(archivoCifrado);
-  
+
       console.log("Archivo cifrado obtenido de IPFS:", archivoBuffer); // Verificar el Buffer del archivo
       return archivoBuffer; // Devuelve el archivo como un Buffer
     } catch (error) {
@@ -79,40 +67,49 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
       return null;
     }
   };
-  
-  const descifrarArchivo = async (archivoCifrado, key) => {
-    try {
-      // Quitar el '0x' si está presente en la clave
-      if (key.startsWith('0x')) {
-        key = key.slice(2);
-      }
-  
-      console.log("Archivo cifrado:", archivoCifrado);  // Verificar el archivo cifrado (como Buffer)
-      console.log("Clave para descifrado:", key);  // Verificar la clave
-  
-      // Convertir el archivo cifrado (Buffer) a Base64
-      const archivoBase64 = archivoCifrado.toString('base64'); // Convertir el Buffer en Base64
-  
-      // Desencriptar el archivo con AES
-      const bytes = AES.decrypt(archivoBase64, key); // archivoCifrado es Base64
-  
-      // Los bytes se deben convertir directamente a un Buffer binario
-      const contenidoDescifrado = bytes.toString(enc.Base64); // Usamos Base64 porque los datos binarios pueden no ser válidos UTF-8
-  
-      // Verificamos si la conversión produjo algo válido
-      if (!contenidoDescifrado) {
-        throw new Error("Descifrado fallido.");
-      }
-  
-      // Convertir Base64 a Buffer (para ser procesado como archivo)
-      const contenidoBuffer = Buffer.from(contenidoDescifrado, 'base64');
-      setArchivoDescifrado(contenidoBuffer); // Mostrar el archivo como Buffer
-  
-    } catch (error) {
-      console.error("Error al descifrar el archivo:", error.message);
-      setErrorMessage("No se pudo descifrar el archivo.");
+
+
+// Función para descifrar el archivo
+const descifrarArchivo = (archivoCifrado, claveHex) => {
+  try {
+    // Si el archivo cifrado está en Buffer, conviértelo a Base64
+    if (Buffer.isBuffer(archivoCifrado)) {
+      archivoCifrado = archivoCifrado.toString('utf-8');
     }
-  };
+    let claveSinPrefijo = claveHex.slice(2);
+    console.log(claveSinPrefijo)
+
+    // Si la clave es un Buffer o Uint8Array, convertirla a cadena hexadecimal
+    if (Buffer.isBuffer(claveSinPrefijo)) {
+      claveSinPrefijo = claveSinPrefijo.toString('hex');
+    }
+    console.log(claveSinPrefijo.length)
+    // Asegúrate de que la clave es la correcta (32 bytes de largo)
+    if (!claveSinPrefijo || claveSinPrefijo.length !== 64) {
+      throw new Error("La clave debe ser de 32 bytes (64 caracteres hexadecimales).");
+    }
+
+    // Desencriptar el archivo cifrado usando AES
+    const bytes = AES.decrypt(archivoCifrado, claveSinPrefijo);
+
+    // Verifica si la desencriptación fue exitosa
+    const archivoDescifrado = bytes.toString(enc.Base64); // Convertir bytes a Base64
+
+    if (!archivoDescifrado) {
+      throw new Error("Descifrado fallido.");
+    }
+
+    // Convertir Base64 a Buffer para procesar el archivo
+    const archivoBuffer = Buffer.from(archivoDescifrado, 'base64');
+    return archivoBuffer;  // Retorna el archivo descifrado como Buffer
+
+  } catch (error) {
+    console.error("Error al descifrar el archivo:", error.message);
+    return null;  // En caso de error, retorna null
+  }
+};
+
+  
 
   // Función para acceder y descifrar el archivo
   const accederArchivo = async (e) => {
@@ -197,7 +194,7 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
                   Descargar la imagen
                 </a>
               ) : (
-                <p>Tipo de archivo no reconocido.</p>
+                <p>El archivo no es compatible con este visor.</p>
               )}
             </div>
           </div>
@@ -207,29 +204,9 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-cover bg-center bg-opacity-70 bg-gradient-to-br text-white rounded-lg shadow-lg p-6 sm:p-8 w-full sm:w-auto max-w-lg relative transform transition-all duration-300 scale-95 hover:scale-100">
-        <button
-          onClick={closeModal}
-          className="absolute top-2 right-2 text-gray-400 hover:text-gray-200 text-lg"
-        >
-          &times;
-        </button>
-        {activeOption && (
-          <button
-            onClick={() => setActiveOption(null)}  // Resetear al menú principal
-            className="absolute top-2 left-2 text-gray-200 hover:text-white text-xl transition-all"
-          >
-            &larr; {/* Flecha para volver */}
-          </button>
-        )}
-
-        <h2 className="text-2xl font-semibold mb-4 text-center">
-          {activeOption ? "Detalle de opción" : "Opciones para el propietario"}
-        </h2>
-
-        {renderOptionContent()}
-      </div>
+    <div className="modal-container">
+      <h2 className="text-2xl font-semibold">Opciones para acceder al archivo</h2>
+      <div className="mt-4">{renderOptionContent()}</div>
     </div>
   );
 }
