@@ -734,6 +734,16 @@
                         "internalType": "uint256",
                         "name": "tokenId",
                         "type": "uint256"
+                    },
+                    {
+                        "internalType": "bytes32",
+                        "name": "claveCifrado",
+                        "type": "bytes32"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "mimeType",
+                        "type": "string"
                     }
                 ],
                 "internalType": "struct PropiedadIntelectual.Archivo[]",
@@ -820,6 +830,16 @@
                         "internalType": "uint256",
                         "name": "tokenId",
                         "type": "uint256"
+                    },
+                    {
+                        "internalType": "bytes32",
+                        "name": "claveCifrado",
+                        "type": "bytes32"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "mimeType",
+                        "type": "string"
                     }
                 ],
                 "internalType": "struct PropiedadIntelectual.Archivo[]",
@@ -881,6 +901,30 @@
                 "internalType": "bytes32",
                 "name": "",
                 "type": "bytes32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "propietario",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "obtenerTipoMime",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
             }
         ],
         "stateMutability": "view",
@@ -963,6 +1007,11 @@
                 "internalType": "bytes32",
                 "name": "claveCifrado",
                 "type": "bytes32"
+            },
+            {
+                "internalType": "string",
+                "name": "mimeType",
+                "type": "string"
             }
         ],
         "name": "registro",

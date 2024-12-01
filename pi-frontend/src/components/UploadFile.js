@@ -7,15 +7,19 @@ import { toast } from 'react-toastify'; // Importar la función de Toastify
 import 'react-toastify/dist/ReactToastify.css'; // Importar los estilos de Toastify
 import CryptoJS from 'crypto-js';
 
+// Función auxiliar para convertir WordArray a Uint8Array
+const wordArrayToUint8Array = (wordArray) => {
+  const words = wordArray.words;
+  const sigBytes = wordArray.sigBytes;
+  const u8 = new Uint8Array(sigBytes);
+  for (let i = 0; i < sigBytes; i++) {
+    u8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xFF;
+  }
+  return u8;
+};
+
 // Proveedor de Ethereum
 const defaultProvider = new ethers.providers.Web3Provider(window.ethereum);
-
-// Instancia del oráculo
-const oraculoContract = new ethers.Contract(
-  addresses.oraculoCreds,
-  abis.oraculoCreds,
-  defaultProvider
-)
 
 // Instancia del contrato en Ethereum
 const registroContract = new ethers.Contract(
@@ -37,30 +41,29 @@ function UploadFile({ closeModal }) {
     const data = e.target.files[0];
 
     if (data && data instanceof Blob) {
-      const reader = new window.FileReader();
+      const reader = new FileReader();
 
       reader.onloadend = () => {
-        // Convertir el archivo en Buffer para IPFS
-        const fileBuffer = Buffer.from(reader.result);
-        setFile(fileBuffer); // Guardamos el archivo como Buffer
+        const fileArrayBuffer = reader.result;
+        const fileUint8Array = new Uint8Array(fileArrayBuffer);
+        setFile({ content: fileUint8Array, mime: data.type });  // Guardamos el archivo binario y su tipo MIME
+        console.log(data.type)
       };
 
-      reader.readAsArrayBuffer(data);
+      reader.readAsArrayBuffer(data);  // Leer el archivo como ArrayBuffer (binario)
     } else {
-      toast.error("Por favor selecciona un archivo válido."); // Mostrar error en Toastify
+      toast.error("Por favor selecciona un archivo válido.");
     }
     e.preventDefault();
   };
 
-  // Comprobar si MetaMask está conectada o solicitar permiso
   const checkMetaMaskConnection = async () => {
     try {
       if (!window.ethereum) {
         throw new Error("MetaMask no está instalada.");
       }
 
-      // Solicitar conexión a MetaMask
-      const accounts = await window.ethereum.enable();
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       if (accounts.length === 0) {
         throw new Error("MetaMask no está conectada.");
       }
@@ -72,44 +75,46 @@ function UploadFile({ closeModal }) {
   };
 
   const cipherFile = (file) => {
-    if (!file || file.length === 0) {
+    if (!file || !file.content || !file.mime) {
       throw new Error("El archivo no es válido o está vacío.");
     }
 
-    console.log("Tipo de archivo:", typeof file, file);
+    // Generar una clave aleatoria de 32 bytes (256 bits)
+    const key = CryptoJS.lib.WordArray.random(32); // 32 bytes = 256 bits
+    console.log(key)
 
-    // Convertir el archivo a base64
-    const fileBase64 = CryptoJS.enc.Base64.stringify(CryptoJS.lib.WordArray.create(file));
-    if (!fileBase64) {
-      throw new Error("No se pudo convertir el archivo a base64.");
-    }
-    console.log("Archivo en base64:", fileBase64);
-
-    // Generar una clave aleatoria de 32 bytes
-    const key = CryptoJS.lib.WordArray.random(32);
-    const keyHex = CryptoJS.enc.Hex.stringify(key); // Convertir clave a hexadecimal
-    console.log("Clave generada (hex):", keyHex);
+    const keyHex = CryptoJS.enc.Hex.stringify(key); // Convertir clave a hexadecimal para almacenamiento
 
     if (!keyHex || keyHex.length !== 64) {
       throw new Error("La clave generada no es válida.");
     }
 
-    // Cifrar el archivo usando AES
-    const cipheredFile = CryptoJS.AES.encrypt(fileBase64, keyHex).toString();
-    if (!cipheredFile) {
+    console.log("Clave generada (hex):", keyHex);
+
+    // Convertir Uint8Array a WordArray
+    const wordArray = CryptoJS.lib.WordArray.create(file.content);
+    console.log(wordArray)
+
+    // Cifrar el archivo usando AES con el WordArray de la clave
+    const encrypted = CryptoJS.AES.encrypt(wordArray, keyHex);
+    console.log(encrypted.ciphertext)
+
+    if (!encrypted) {
       throw new Error("El archivo no se pudo cifrar.");
     }
-    console.log("Archivo cifrado:", cipheredFile);
 
-    // Convertir el archivo cifrado a Buffer
-    const cipheredFileBuffer = Buffer.from(cipheredFile, 'utf-8');
+    console.log("Archivo cifrado:", encrypted.toString());
+
+    // Convertir el ciphertext WordArray a Uint8Array
+    const cipheredFileUint8Array = wordArrayToUint8Array(encrypted.ciphertext);
+    console.log(cipheredFileUint8Array)
+    // Convertir el Uint8Array a Buffer para almacenarlo en IPFS
+    const cipheredFileBuffer = Buffer.from(cipheredFileUint8Array);
     console.log("Buffer del archivo cifrado:", cipheredFileBuffer);
 
     return { cipheredFileBuffer, key: keyHex };
   };
 
-
-  // Subir archivo a IPFS y registrarlo en Ethereum
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -122,19 +127,18 @@ function UploadFile({ closeModal }) {
     setErrorMessage(""); // Reiniciar mensajes de error
 
     try {
-      // Verificar conexión a MetaMask o solicitar permiso
       const account = await checkMetaMaskConnection();
       console.log(`Conectado a MetaMask con la cuenta: ${account}`);
-
-      // Cifrar el archivo
+      console.log(file)
       const { cipheredFileBuffer, key } = cipherFile(file);
-      // Convertir clave al formato correcto
+
       const keyBuffer = Buffer.from(key, 'hex'); // Convierte clave a Buffer
       if (keyBuffer.length !== 32) {
         throw new Error("La clave no tiene exactamente 32 bytes.");
       }
 
-      const keyHex = `0x${key.toString('hex')}`; // Agregar el prefijo 0x
+      const keyHex = `0x${key}`; // Agregar el prefijo 0x
+
       // Cliente IPFS (conexión a tu nodo local)
       const client = await create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
 
@@ -160,9 +164,10 @@ function UploadFile({ closeModal }) {
       const contratoConSigner = registroContract.connect(signer);
       const tx = await contratoConSigner.registro(
         result.cid.toString(), // Hash del archivo IPFS
-        titulo,                 // Título del archivo
+        titulo,                // Título del archivo
         descripcion,           // Descripción del archivo
-        keyHex // Clave cifrada
+        keyHex,                // Clave cifrada
+        file.mime              // Tipo MIME del archivo
       );
       await tx.wait(); // Esperar confirmación de la transacción
       setIpfsHash(result.cid.toString());
@@ -170,7 +175,7 @@ function UploadFile({ closeModal }) {
       closeModal(); // Cerrar el modal después de subir el archivo
     } catch (error) {
       console.error("Error al subir el archivo:", error.message);
-      toast.error("Hubo un problema al procesar tu solicitud. Inténtalo nuevamente."); // Notificación de error
+      toast.error(`Hubo un problema al procesar tu solicitud: ${error.message}`); // Notificación de error
     } finally {
       setIsUploading(false);
     }

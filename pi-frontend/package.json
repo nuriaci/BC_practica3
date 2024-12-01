@@ -15,6 +15,7 @@
     "crypto-js": "^4.2.0",
     "ethers": "^5.7.0",
     "kubo-rpc-client": "^5.0.2",
+    "pdfjs-dist": "^3.11.174",
     "pi-frontend": "file:",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

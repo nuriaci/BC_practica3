@@ -2,15 +2,11 @@ import React, { useState } from "react";
 import { ethers } from "ethers";
 import { addresses, abis } from "../contracts";
 import { ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
-import { create } from "kubo-rpc-client"; // Cliente IPFS
-import { AES, enc } from "crypto-js";  // No necesitamos SHA3, ya que la clave viene del contrato
+import { create } from "kubo-rpc-client";
+import CryptoJS from 'crypto-js';
 import { Buffer } from "buffer";
-import { Document, Page } from 'react-pdf'; // Para renderizar PDFs
 
-// Proveedor de Ethereum
 const defaultProvider = new ethers.providers.Web3Provider(window.ethereum);
-
-// Instancia del contrato en Ethereum
 const propietarioContract = new ethers.Contract(
   addresses.ipfs,
   abis.ipfs,
@@ -18,25 +14,21 @@ const propietarioContract = new ethers.Contract(
 );
 
 function RecursosAccesoLicencia({ closeModal, selectedFile }) {
-  const { tokenId, hash } = selectedFile;  // Asegúrate de obtener 'tokenId' y 'hash' correctamente
+  const { tokenId, direccionPropietario, hash } = selectedFile;
   const [activeOption, setActiveOption] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [archivoDescifrado, setArchivoDescifrado] = useState(null);
-  const [numPages, setNumPages] = useState(null);  // Para controlar las páginas del PDF
 
-  // Funcionalidades
   const functionalities = [
     { title: "Acceder al archivo", action: () => setActiveOption("acceso"), icon: <ArrowsRightLeftIcon className="w-8 h-8" /> },
   ];
 
-  // Obtener la clave de descifrado (ya derivada en el contrato)
   const obtenerClaveDescifrado = async () => {
     try {
       const signer = defaultProvider.getSigner();
+      const userAddress = await signer.getAddress();
       const contratoConSigner = propietarioContract.connect(signer);
-
-      // Llamamos al contrato para obtener la clave asociada al tokenId y el address del usuario
-      const claveDescifrada = await contratoConSigner.obtenerClaveConNonce(tokenId, signer.getAddress());  // El contrato ya devuelve la clave derivada
+      const claveDescifrada = await contratoConSigner.obtenerClaveConNonce(tokenId, userAddress);
       return claveDescifrada;
     } catch (error) {
       console.error("Error al obtener la clave de descifrado:", error.message);
@@ -45,23 +37,15 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
     }
   };
 
-  // Obtener el archivo desde IPFS
   const obtenerArchivoDeIPFS = async (hash) => {
-    const client = create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
+    const client = create("/ip4/127.0.0.1/tcp/5001");
     try {
       const archivoGenerator = client.cat(hash);
       let archivoCifrado = [];
-
-      // Consumir el AsyncGenerator y almacenar los bloques en un array
       for await (const chunk of archivoGenerator) {
-        archivoCifrado.push(chunk);  // Almacena los chunks binarios
+        archivoCifrado.push(chunk);
       }
-
-      // Unir todos los bloques en un solo Buffer
-      const archivoBuffer = Buffer.concat(archivoCifrado);
-
-      console.log("Archivo cifrado obtenido de IPFS:", archivoBuffer); // Verificar el Buffer del archivo
-      return archivoBuffer; // Devuelve el archivo como un Buffer
+      return Buffer.concat(archivoCifrado);
     } catch (error) {
       console.error("Error al obtener el archivo desde IPFS:", error.message);
       setErrorMessage("No se pudo obtener el archivo de IPFS.");
@@ -69,143 +53,87 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
     }
   };
 
-  // Descifrar el archivo
-  const descifrarArchivo = (archivoCifrado, claveHex) => {
+  const obtenerTipoMime = async (tokenId) => {
     try {
-      // Asegúrate de que archivoCifrado sea un Buffer
-      if (!Buffer.isBuffer(archivoCifrado)) {
-        archivoCifrado = Buffer.from(archivoCifrado, 'utf-8');  // Si es una cadena, conviértelo en Buffer
-      }
-
-      // Convierte el archivo cifrado a Base64
-      const archivoCifradoBase64 = archivoCifrado.toString('base64');
-
-      // Extraer la clave sin el prefijo '0x'
-      let claveSinPrefijo = claveHex.slice(2); // Eliminar el prefijo "0x"
-      if (Buffer.isBuffer(claveSinPrefijo)) {
-        claveSinPrefijo = claveSinPrefijo.toString('hex');
-      }
-
-      // Desencriptar el archivo con AES
-      const bytes = AES.decrypt(archivoCifradoBase64, claveSinPrefijo); // Usa Base64 como formato para el descifrado
-      const archivoDescifrado = bytes.toString(enc.Base64); // Obtener el archivo como Base64
-
-      if (!archivoDescifrado) {
-        throw new Error("Descifrado fallido.");
-      }
-
-      // Convertir el archivo descifrado de nuevo a un Buffer
-      return Buffer.from(archivoDescifrado, 'base64'); // Devuelve el archivo como Buffer
-
+      const contratoConSigner = propietarioContract.connect(defaultProvider.getSigner());
+      const mimeType = await contratoConSigner.obtenerTipoMime(direccionPropietario, tokenId);
+      return mimeType;
     } catch (error) {
-      console.error("Error al descifrar el archivo:", error.message);
-      return null;  // En caso de error, retorna null
+      console.error("Error al obtener el tipo MIME:", error.message);
+      setErrorMessage("No se pudo obtener el tipo MIME del archivo.");
+      return "application/octet-stream";
     }
   };
 
-  // Función para acceder y descifrar el archivo
+  const descifrarArchivo = (archivoCifradoBuffer, claveHex, mimeType) => {
+    try {
+      const claveSinPrefijo = claveHex.startsWith("0x") ? claveHex.slice(2) : claveHex;
+      const keyWordArray = CryptoJS.enc.Hex.parse(claveSinPrefijo);
+      const archivoCifradoUint8Array = new Uint8Array(archivoCifradoBuffer);
+      const ciphertextWordArray = CryptoJS.lib.WordArray.create(archivoCifradoUint8Array);
+      const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext: ciphertextWordArray });
+      const decrypted = CryptoJS.AES.decrypt(cipherParams, claveSinPrefijo);
+      const uint8Array = new Uint8Array(decrypted.sigBytes);
+      for (let i = 0; i < decrypted.sigBytes; i++) {
+        uint8Array[i] = (decrypted.words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+      }
+      return new Blob([uint8Array], { type: mimeType });
+    } catch (error) {
+      console.error("Error al descifrar el archivo:", error.message);
+      return null;
+    }
+  };
+
   const accederArchivo = async (e) => {
     e.preventDefault();
     try {
-      const claveDescifrado = await obtenerClaveDescifrado(); // Obtener la clave de descifrado
+      const claveDescifrado = await obtenerClaveDescifrado();
       if (!claveDescifrado) {
         setErrorMessage("Clave de descifrado no encontrada.");
         return;
       }
-
-      const archivoCifrado = await obtenerArchivoDeIPFS(hash);  // Obtener el archivo desde IPFS
+      const archivoCifrado = await obtenerArchivoDeIPFS(hash);
       if (!archivoCifrado) {
         setErrorMessage("Archivo no encontrado en IPFS.");
         return;
       }
-
-      // Descifrar el archivo
-      const archivoDescifrado = await descifrarArchivo(archivoCifrado, claveDescifrado);
-      if (archivoDescifrado) {
-        setArchivoDescifrado(archivoDescifrado); // Almacenar el archivo descifrado en el estado
+      const tipoMime = await obtenerTipoMime(tokenId);
+      console.log(tipoMime)
+      const archivoDescifradoResultado = descifrarArchivo(archivoCifrado, claveDescifrado, tipoMime);
+      if (archivoDescifradoResultado) {
+        setArchivoDescifrado(archivoDescifradoResultado);
+        console.log(archivoDescifradoResultado)
       } else {
         setErrorMessage("Error al descifrar el archivo.");
       }
     } catch (error) {
+      console.error("Error al acceder o descifrar el archivo:", error.message);
       setErrorMessage("Error al acceder o descifrar el archivo.");
     }
-  };
-
-  // Función para verificar el tipo de archivo basado en sus primeros bytes
-  const getFileType = (data) => {
-    const firstBytes = data.slice(0, 4).toString('hex'); // Obtener los primeros 4 bytes en hexadecimal
-
-    if (firstBytes === '25504446') {
-      return 'pdf';  // PDF
-    } else if (firstBytes === '89504e47') {
-      return 'png';  // PNG
-    } else if (firstBytes === 'ffd8') {
-      return 'jpg';  // JPG
-    } else {
-      return 'unknown';  // Otro tipo de archivo
-    }
-  };
-
-  // Función para renderizar el contenido de la opción activa
-  const renderOptionContent = () => {
-    return (
-      <>
-        <h3 className="text-lg font-semibold">Acceder y descifrar el archivo</h3>
-        <form onSubmit={accederArchivo}>
-          <button
-            type="submit"
-            className="bg-teal-600 hover:bg-teal-700 text-white mt-4 py-2 px-4 rounded w-full"
-          >
-            Acceder al contenido del archivo
-          </button>
-          {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
-        </form>
-
-        {archivoDescifrado && (
-          <div className="mt-4">
-            <h4 className="font-semibold">Contenido del archivo descifrado:</h4>
-            <div>
-              {/* Verificar el tipo del archivo y mostrar el contenido adecuado */}
-              {getFileType(archivoDescifrado) === 'pdf' ? (
-                <Document
-                  file={new Blob([archivoDescifrado], { type: 'application/pdf' })}
-                  onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                >
-                  {Array.from(new Array(numPages), (el, index) => (
-                    <Page key={index} pageNumber={index + 1} />
-                  ))}
-                </Document>
-              ) : getFileType(archivoDescifrado) === 'png' || getFileType(archivoDescifrado) === 'jpg' ? ( // Si es una imagen
-                <img
-                  src={URL.createObjectURL(new Blob([archivoDescifrado]))}
-                  alt="Imagen descifrada"
-                  className="max-w-full h-auto"
-                />
-              ) : getFileType(archivoDescifrado) === 'unknown' ? ( // Si es un archivo desconocido
-                <>
-                  <p>El archivo es de tipo desconocido y no puede visualizarse en el visor.</p>
-                  <a
-                    href={URL.createObjectURL(new Blob([archivoDescifrado]))}
-                    download="archivo_descifrado_unknown"
-                    className="bg-teal-600 hover:bg-teal-700 text-white py-2 px-4 rounded"
-                  >
-                    Descargar el archivo desconocido
-                  </a>
-                </>
-              ) : (
-                <pre className="bg-gray-100 p-4">{archivoDescifrado.toString()}</pre>
-              )}
-            </div>
-          </div>
-        )}
-      </>
-    );
   };
 
   return (
     <div className="modal-container">
       <h2 className="text-2xl font-semibold">Opciones para acceder al archivo</h2>
-      <div className="mt-4">{renderOptionContent()}</div>
+      <form onSubmit={accederArchivo}>
+        <button
+          type="submit"
+          className="bg-teal-600 hover:bg-teal-700 text-white mt-4 py-2 px-4 rounded w-full"
+        >
+          Descargar el archivo descifrado
+        </button>
+        {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
+      </form>
+
+      {archivoDescifrado && (
+        <a
+          href={URL.createObjectURL(archivoDescifrado)}
+          download="archivo_descifrado"
+          className="bg-teal-600 hover:bg-teal-700 text-white py-2 px-4 rounded mt-4 inline-block"
+        >
+          Descargar archivo
+        </a>
+      )}
     </div>
   );
 }
