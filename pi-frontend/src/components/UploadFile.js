@@ -7,6 +7,7 @@ import { toast } from 'react-toastify'; // Importar la función de Toastify
 import 'react-toastify/dist/ReactToastify.css'; // Importar los estilos de Toastify
 import CryptoJS from 'crypto-js';
 
+
 // Función auxiliar para convertir WordArray a Uint8Array
 const wordArrayToUint8Array = (wordArray) => {
   const words = wordArray.words;
@@ -91,28 +92,40 @@ function UploadFile({ closeModal }) {
 
     console.log("Clave generada (hex):", keyHex);
 
+    // Generar un IV aleatorio (16 bytes para AES)
+    const iv = CryptoJS.lib.WordArray.random(16); // 16 bytes = 128 bits
+    console.log("IV generado (hex):", CryptoJS.enc.Hex.stringify(iv));
+
     // Convertir Uint8Array a WordArray
     const wordArray = CryptoJS.lib.WordArray.create(file.content);
     console.log(wordArray)
 
     // Cifrar el archivo usando AES con el WordArray de la clave
-    const encrypted = CryptoJS.AES.encrypt(wordArray, keyHex);
-    console.log(encrypted.ciphertext)
+    const encrypted = CryptoJS.AES.encrypt(wordArray, keyHex, {
+      iv: iv,
+      padding: CryptoJS.pad.Pkcs7, // Añadir relleno (padding) si el tamaño no es múltiplo de 16
+    });
+    console.log("Archivo cifrado:", encrypted.toString());
+
 
     if (!encrypted) {
       throw new Error("El archivo no se pudo cifrar.");
     }
 
-    console.log("Archivo cifrado:", encrypted.toString());
-
-    // Convertir el ciphertext WordArray a Uint8Array
+    // Convertir el ciphertext a Uint8Array
     const cipheredFileUint8Array = wordArrayToUint8Array(encrypted.ciphertext);
-    console.log(cipheredFileUint8Array)
-    // Convertir el Uint8Array a Buffer para almacenarlo en IPFS
+    console.log("Archivo cifrado (Uint8Array):", cipheredFileUint8Array);
+
+    // Convertir a Buffer para almacenarlo en IPFS
     const cipheredFileBuffer = Buffer.from(cipheredFileUint8Array);
     console.log("Buffer del archivo cifrado:", cipheredFileBuffer);
 
-    return { cipheredFileBuffer, key: keyHex };
+    // Retornar tanto el archivo cifrado como la clave y el IV
+    return {
+      cipheredFileBuffer,
+      key: keyHex,
+      iv: CryptoJS.enc.Hex.stringify(iv) // Pasar el IV como string hexadecimal para almacenarlo 
+    };
   };
 
   const handleSubmit = async (e) => {
@@ -130,7 +143,7 @@ function UploadFile({ closeModal }) {
       const account = await checkMetaMaskConnection();
       console.log(`Conectado a MetaMask con la cuenta: ${account}`);
       console.log(file)
-      const { cipheredFileBuffer, key } = cipherFile(file);
+      const { cipheredFileBuffer, key, iv } = cipherFile(file);
 
       const keyBuffer = Buffer.from(key, 'hex'); // Convierte clave a Buffer
       if (keyBuffer.length !== 32) {
@@ -140,24 +153,11 @@ function UploadFile({ closeModal }) {
       const keyHex = `0x${key}`; // Agregar el prefijo 0x
 
       // Cliente IPFS (conexión a tu nodo local)
-      const client = await create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
+      const client = await create("/ip4/127.0.0.1/tcp/5002"); // Conexión IPFS local
 
       // Subir el archivo cifrado a IPFS
       const result = await client.add(cipheredFileBuffer);
       console.log("Archivo subido a IPFS:", result);
-
-      // Manejo de errores de IPFS
-      try {
-        await client.files.cp(`/ipfs/${result.cid}`, `/${result.cid}`);
-      } catch (error) {
-        if (error.message && error.message.includes('directory already has entry by that name')) {
-          setErrorMessage('El archivo ya está registrado en IPFS.'); // Actualizamos el estado con el error específico
-          throw new Error('El archivo ya está registrado en IPFS.'); // Lanzar un error personalizado
-        } else {
-          setErrorMessage('Hubo un problema al registrar el archivo en IPFS.');
-          throw error;
-        }
-      }
 
       // Registrar el archivo en el contrato de Ethereum
       const signer = defaultProvider.getSigner();
@@ -167,6 +167,7 @@ function UploadFile({ closeModal }) {
         titulo,                // Título del archivo
         descripcion,           // Descripción del archivo
         keyHex,                // Clave cifrada
+        iv,                    // IV asociado
         file.mime              // Tipo MIME del archivo
       );
       await tx.wait(); // Esperar confirmación de la transacción

@@ -48,6 +48,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
         uint256 tokenId;
         bytes32 claveCifrado;
         string mimeType;
+        bytes32 iv;
     }
 
     struct Transferencia { 
@@ -95,7 +96,10 @@ contract PropiedadIntelectual is ERC721URIStorage {
 
     // Mapeo para guardar claves
     mapping(uint256 => bytes32) private clavesCifrado; 
-    mapping(uint256 => uint256) private nonces;      
+    mapping(uint256 => uint256) private nonces; 
+
+    // Mapping para cifrar (iv)
+    mapping(uint256 => bytes32) public ivs;     
 
     // Dirección del oráculo
     address private oracleAddress;
@@ -281,7 +285,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
 
 
     /* ===== Registro de Propiedad ===== */
-    function registro(string calldata hash_ipfs, string calldata titulo, string calldata descripcion, bytes32 claveCifrado, string calldata mimeType) external {
+    function registro(string calldata hash_ipfs, string calldata titulo, string calldata descripcion, bytes32 claveCifrado, bytes32 iv, string calldata mimeType) external {
         require(_consentimientoDado[msg.sender], "Debes aceptar los terminos y condiciones antes de registrar");
         require(bytes(hash_ipfs).length > 0, "Hash invalido");
         require(bytes(titulo).length > 0, "Titulo invalido");
@@ -291,23 +295,27 @@ contract PropiedadIntelectual is ERC721URIStorage {
         _safeMint(msg.sender, tokenId);
         _setTokenURI(tokenId, string(abi.encodePacked("ipfs://", hash_ipfs)));
 
-        _archivos[msg.sender].push(Archivo(titulo, descripcion, hash_ipfs, block.timestamp, tokenId, claveCifrado, mimeType));
+        _archivos[msg.sender].push(Archivo(titulo, descripcion, hash_ipfs, block.timestamp, tokenId, claveCifrado, mimeType,iv));
 
         if (!direccionesRegistradas[msg.sender]) {
             direccionesRegistradas[msg.sender] = true;
             propietarios.push(msg.sender);
         }
 
-        // Almacenar la clave de cifrado para este archivo
+        // Almacenar la clave de cifrado y IV para este archivo
         clavesCifrado[tokenId] = claveCifrado;
+        ivs[tokenId] = iv;  // Almacenar el IV asociado al archivo
 
-        // Iniciar el nonce para este archivo (cada archivo tiene un nonce único)
+        // Iniciar el nonce para este archivo (si es necesario)
         //nonces[tokenId] = 0;
 
         emisionClaims(msg.sender, tokenId, 0);
         emit RegistroRealizado(msg.sender, hash_ipfs, titulo, block.timestamp, tokenId);
     }
 
+    function obtenerIV(uint256 tokenId) external view returns (bytes32) {
+        return ivs[tokenId];  
+    }
     function concederAcceso(address usuario, uint256 tokenId) external soloPropietario(tokenId) {
         emisionClaims(usuario, tokenId, 0);
     }

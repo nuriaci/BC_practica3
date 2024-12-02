@@ -151,7 +151,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
 
         // Actualizar el estado con los accesos permitidos
         setAccesosPermitidos(accesosConAcceso);
-      } 
+      }
     } catch (error) {
       console.error("Error al listar los accesos:", error.message);
       setErrorMessage("Error al obtener la lista de accesos.");
@@ -197,7 +197,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     try {
       const signer = defaultProvider.getSigner();
       const contratoConSigner = propietarioContract.connect(signer);
-      const duracionEnDias = duration *86400;
+      const duracionEnDias = duration * 86400;
       const tx = await contratoConSigner.darLicenciaTemporal(tokenId, direccionUsuario, duracionEnDias);
       await tx.wait();
 
@@ -225,7 +225,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
       const signer = defaultProvider.getSigner();
       const contratoConSigner = propietarioContract.connect(signer);
 
-      const tx = await contratoConSigner.darAcceso(tokenId, usuarioAcceso);
+      const tx = await contratoConSigner.concederAcceso(usuarioAcceso, tokenId);
       await tx.wait();
 
       alert("Acceso otorgado con éxito");
@@ -477,27 +477,27 @@ function RecursosPropietario({ closeModal, selectedFile }) {
             </form>
           </>
         );
-        case "listaraccesos":
-          return (
-            <>
-              {accesosPermitidos.length > 0 ? (
-                <div className="mt-4">
-                  <h3 className="font-semibold text-lg">Usuarios con acceso:</h3>
-                  <ul>
-                    {accesosPermitidos.map((usuario, index) => (
-                      <li key={index} className="text-sm text-white">
-                        <p><strong>Dirección:</strong> {usuario.usuario}</p>
-                        <p><strong>Fecha de acceso:</strong> {new Date(parseInt(usuario.fecha) * 1000).toLocaleString()}</p>
-                        <p><strong>Duración:</strong> {usuario.duracion} días</p>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <p className="mt-4 text-red-500">{errorMessage || "No hay usuarios con acceso"}</p>
-              )}
-            </>
-          );
+      case "listaraccesos":
+        return (
+          <>
+            {accesosPermitidos.length > 0 ? (
+              <div className="mt-4">
+                <h3 className="font-semibold text-lg">Usuarios con acceso:</h3>
+                <ul>
+                  {accesosPermitidos.map((usuario, index) => (
+                    <li key={index} className="text-sm text-white">
+                      <p><strong>Dirección:</strong> {usuario.usuario}</p>
+                      <p><strong>Fecha de acceso:</strong> {new Date(parseInt(usuario.fecha) * 1000).toLocaleString()}</p>
+                      <p><strong>Duración:</strong> {usuario.duracion} días</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="mt-4 text-red-500">{errorMessage || "No hay usuarios con acceso"}</p>
+            )}
+          </>
+        );
       default:
         return (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
@@ -524,7 +524,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
 
   useEffect(() => {
     if (activeOption === "listaraccesos") {
-      listarAccesos();  
+      listarAccesos();
     }
   }, [activeOption]);
 

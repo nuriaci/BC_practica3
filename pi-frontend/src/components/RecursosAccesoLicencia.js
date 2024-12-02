@@ -38,7 +38,7 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   };
 
   const obtenerArchivoDeIPFS = async (hash) => {
-    const client = create("/ip4/127.0.0.1/tcp/5001");
+    const client = create("/ip4/127.0.0.1/tcp/5002");
     try {
       const archivoGenerator = client.cat(hash);
       let archivoCifrado = [];
@@ -65,21 +65,41 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
     }
   };
 
-  const descifrarArchivo = (archivoCifradoBuffer, claveHex, mimeType) => {
+  const descifrarArchivo = (archivoCifradoBuffer, claveHex, iv, mimeType) => {
     try {
       const claveSinPrefijo = claveHex.startsWith("0x") ? claveHex.slice(2) : claveHex;
       const keyWordArray = CryptoJS.enc.Hex.parse(claveSinPrefijo);
+      const ivWordArray = CryptoJS.enc.Hex.parse(iv);
+
       const archivoCifradoUint8Array = new Uint8Array(archivoCifradoBuffer);
       const ciphertextWordArray = CryptoJS.lib.WordArray.create(archivoCifradoUint8Array);
       const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext: ciphertextWordArray });
-      const decrypted = CryptoJS.AES.decrypt(cipherParams, claveSinPrefijo);
+
+      // Decrypt using AES-CBC
+      const decrypted = CryptoJS.AES.decrypt(cipherParams, keyWordArray, { iv: ivWordArray });
+
       const uint8Array = new Uint8Array(decrypted.sigBytes);
       for (let i = 0; i < decrypted.sigBytes; i++) {
         uint8Array[i] = (decrypted.words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
       }
+
+      const mimeType = obtenerTipoMime(tokenId);
+
+      console.log(mimeType);
       return new Blob([uint8Array], { type: mimeType });
     } catch (error) {
       console.error("Error al descifrar el archivo:", error.message);
+      return null;
+    }
+  };
+
+  const obtenerIVDesdeContrato = async (tokenId) => {
+    try {
+      const iv = await propietarioContract.obtenerIV(tokenId);
+      return iv;
+    } catch (error) {
+      console.error("Error al obtener el IV:", error.message);
+      setErrorMessage("No se pudo obtener el IV.");
       return null;
     }
   };
@@ -92,17 +112,24 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
         setErrorMessage("Clave de descifrado no encontrada.");
         return;
       }
+
       const archivoCifrado = await obtenerArchivoDeIPFS(hash);
       if (!archivoCifrado) {
         setErrorMessage("Archivo no encontrado en IPFS.");
         return;
       }
+
       const tipoMime = await obtenerTipoMime(tokenId);
-      console.log(tipoMime)
-      const archivoDescifradoResultado = descifrarArchivo(archivoCifrado, claveDescifrado, tipoMime);
+      const iv = await obtenerIVDesdeContrato(tokenId);
+      if (!iv) {
+        setErrorMessage("No se pudo obtener el IV.");
+        return;
+      }
+
+
+      const archivoDescifradoResultado = descifrarArchivo(archivoCifrado, claveDescifrado, iv, tipoMime);
       if (archivoDescifradoResultado) {
         setArchivoDescifrado(archivoDescifradoResultado);
-        console.log(archivoDescifradoResultado)
       } else {
         setErrorMessage("Error al descifrar el archivo.");
       }
