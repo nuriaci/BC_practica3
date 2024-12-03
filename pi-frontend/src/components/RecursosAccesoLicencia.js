@@ -48,7 +48,7 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   };
 
   const obtenerArchivoDeIPFS = async (hash) => {
-    const client = create("/ip4/127.0.0.1/tcp/5001");
+    const client = create("/ip4/127.0.0.1/tcp/5002");
     try {
       const archivoGenerator = client.cat(hash);
       let archivoCifrado = [];
@@ -81,26 +81,26 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
       // Eliminar prefijos '0x' si existen
       const claveSinPrefijo = claveHex.startsWith("0x") ? claveHex.slice(2) : claveHex;
       const ivSinPrefijo = ivHex.startsWith("0x") ? ivHex.slice(2) : ivHex;
-  
+
       // Convertir clave e IV a WordArray
       const keyWordArray = CryptoJS.enc.Hex.parse(claveSinPrefijo);
       const ivWordArray = CryptoJS.enc.Hex.parse(ivSinPrefijo);
-  
+
       // Convertir archivo cifrado (Buffer) a WordArray
       const archivoCifradoUint8Array = new Uint8Array(archivoCifradoBuffer);
       const ciphertextWordArray = CryptoJS.lib.WordArray.create(archivoCifradoUint8Array);
-  
+
       // Crear CipherParams para CryptoJS
       const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext: ciphertextWordArray });
-  
+
       // Descifrar usando AES-CBC
       const decrypted = CryptoJS.AES.decrypt(cipherParams, keyWordArray, {
         iv: ivWordArray,
         padding: CryptoJS.pad.Pkcs7, // Asegurarse de usar el mismo padding que en el cifrado
       });
-  
+
       const decryptedBytes = wordArrayToUint8Array(decrypted)
-  
+
       // Crear un Blob con el contenido descifrado y el tipo MIME
       return new Blob([decryptedBytes], { type: mimeType });
     } catch (error) {

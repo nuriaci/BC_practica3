@@ -52,22 +52,6 @@ function UploadFile({ closeModal }) {
     e.preventDefault();
   };
 
-  const checkMetaMaskConnection = async () => {
-    try {
-      if (!window.ethereum) {
-        throw new Error("MetaMask no está instalada.");
-      }
-
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      if (accounts.length === 0) {
-        throw new Error("MetaMask no está conectada.");
-      }
-
-      return accounts[0]; // Devuelve la dirección de la cuenta conectada
-    } catch (error) {
-      throw new Error(error.message);
-    }
-  };
 
   const cipherFile = (file) => {
     if (!file || !file.content || !file.mime) {
@@ -134,8 +118,7 @@ function UploadFile({ closeModal }) {
     setErrorMessage(""); // Reiniciar mensajes de error
 
     try {
-      const account = await checkMetaMaskConnection();
-      console.log(`Conectado a MetaMask con la cuenta: ${account}`);
+
       console.log(file);
 
       const { cipheredFileBuffer, key, iv } = cipherFile(file);
@@ -154,7 +137,7 @@ function UploadFile({ closeModal }) {
       console.log("MIME: ", file.mime);
 
       // Cliente IPFS (conexión a tu nodo local)
-      const client = await create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
+      const client = await create("/ip4/127.0.0.1/tcp/5002"); // Conexión IPFS local
       const version = await client.version();
       console.log("Versión de IPFS:", version);
 
