@@ -48,7 +48,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
         uint256 tokenId;
         bytes32 claveCifrado;
         string mimeType;
-        bytes32 iv;
+        bytes16 iv;
     }
 
     struct Transferencia { 
@@ -99,7 +99,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
     mapping(uint256 => uint256) private nonces; 
 
     // Mapping para cifrar (iv)
-    mapping(uint256 => bytes32) public ivs;     
+    mapping(uint256 => bytes16) public ivs;     
 
     // Dirección del oráculo
     address private oracleAddress;
@@ -285,7 +285,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
 
 
     /* ===== Registro de Propiedad ===== */
-    function registro(string calldata hash_ipfs, string calldata titulo, string calldata descripcion, bytes32 claveCifrado, bytes32 iv, string calldata mimeType) external {
+    function registro(string calldata hash_ipfs, string calldata titulo, string calldata descripcion, bytes32 claveCifrado, bytes16 iv, string calldata mimeType) external {
         require(_consentimientoDado[msg.sender], "Debes aceptar los terminos y condiciones antes de registrar");
         require(bytes(hash_ipfs).length > 0, "Hash invalido");
         require(bytes(titulo).length > 0, "Titulo invalido");
@@ -313,7 +313,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
         emit RegistroRealizado(msg.sender, hash_ipfs, titulo, block.timestamp, tokenId);
     }
 
-    function obtenerIV(uint256 tokenId) external view returns (bytes32) {
+    function obtenerIV(uint256 tokenId) external view returns (bytes16) {
         return ivs[tokenId];  
     }
     function concederAcceso(address usuario, uint256 tokenId) external soloPropietario(tokenId) {
@@ -341,7 +341,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
         require(verificacionClaims(msg.sender, tokenId), "No tienes acceso");
 
         // Retornar la clave derivada con el nonce actual
-        return obtenerClaveConNonce(tokenId, msg.sender);
+        return obtenerClave(tokenId, msg.sender);
     }
 
     function listarClaimsArchivo(uint256 tokenId) public soloPropietario(tokenId) returns (Claim[] memory) {
@@ -510,21 +510,15 @@ contract PropiedadIntelectual is ERC721URIStorage {
     }
 
     /* ===== Obtener Clave Derivada con Nonce ===== */
-   function obtenerClaveConNonce(uint256 tokenId, address usuario) public view returns (bytes32) {
+   function obtenerClave(uint256 tokenId, address usuario) public view returns (bytes32) {
         // Verificar que el usuario tiene acceso
         require(verificacionClaims(usuario, tokenId), "No tienes acceso");
 
         // Verificar que la clave cifrada esté definida para el tokenId
         require(clavesCifrado[tokenId] != bytes32(0), "Clave no encontrada");
 
-        // Obtener el nonce del tokenId
-        uint256 currentNonce = nonces[tokenId];
-
-        // Realizar el hash con keccak256 (concatenando clave y nonce)
-        bytes32 claveDerivada = keccak256(abi.encodePacked(clavesCifrado[tokenId], currentNonce));
-
         // Devolver la clave derivada
-        return claveDerivada;
+        return clavesCifrado[tokenId];
     }
 
     function obtenerTipoMime(address propietario, uint256 tokenId) public view returns (string memory) {
@@ -539,8 +533,4 @@ contract PropiedadIntelectual is ERC721URIStorage {
 
         revert("Archivo no encontrado");  // Si no se encuentra el archivo con ese tokenId
     }
-
-
-
-
 }
