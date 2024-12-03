@@ -6,6 +6,16 @@ import { create } from "kubo-rpc-client";
 import CryptoJS from 'crypto-js';
 import { Buffer } from "buffer";
 
+const wordArrayToUint8Array = (wordArray) => {
+  const words = wordArray.words;
+  const sigBytes = wordArray.sigBytes;
+  const u8 = new Uint8Array(sigBytes);
+  for (let i = 0; i < sigBytes; i++) {
+    u8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xFF;
+  }
+  return u8;
+};
+
 const defaultProvider = new ethers.providers.Web3Provider(window.ethereum);
 const propietarioContract = new ethers.Contract(
   addresses.ipfs,
@@ -28,7 +38,7 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
       const signer = defaultProvider.getSigner();
       const userAddress = await signer.getAddress();
       const contratoConSigner = propietarioContract.connect(signer);
-      const claveDescifrada = await contratoConSigner.obtenerClaveConNonce(tokenId, userAddress);
+      const claveDescifrada = await contratoConSigner.obtenerClave(tokenId, userAddress);
       return claveDescifrada;
     } catch (error) {
       console.error("Error al obtener la clave de descifrado:", error.message);
@@ -38,7 +48,7 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   };
 
   const obtenerArchivoDeIPFS = async (hash) => {
-    const client = create("/ip4/127.0.0.1/tcp/5002");
+    const client = create("/ip4/127.0.0.1/tcp/5001");
     try {
       const archivoGenerator = client.cat(hash);
       let archivoCifrado = [];
@@ -57,6 +67,7 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
     try {
       const contratoConSigner = propietarioContract.connect(defaultProvider.getSigner());
       const mimeType = await contratoConSigner.obtenerTipoMime(direccionPropietario, tokenId);
+      console.log(mimeType);
       return mimeType;
     } catch (error) {
       console.error("Error al obtener el tipo MIME:", error.message);
@@ -65,28 +76,33 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
     }
   };
 
-  const descifrarArchivo = (archivoCifradoBuffer, claveHex, iv, mimeType) => {
+  const descifrarArchivo = (archivoCifradoBuffer, claveHex, ivHex, mimeType) => {
     try {
+      // Eliminar prefijos '0x' si existen
       const claveSinPrefijo = claveHex.startsWith("0x") ? claveHex.slice(2) : claveHex;
+      const ivSinPrefijo = ivHex.startsWith("0x") ? ivHex.slice(2) : ivHex;
+  
+      // Convertir clave e IV a WordArray
       const keyWordArray = CryptoJS.enc.Hex.parse(claveSinPrefijo);
-      const ivWordArray = CryptoJS.enc.Hex.parse(iv);
-
+      const ivWordArray = CryptoJS.enc.Hex.parse(ivSinPrefijo);
+  
+      // Convertir archivo cifrado (Buffer) a WordArray
       const archivoCifradoUint8Array = new Uint8Array(archivoCifradoBuffer);
       const ciphertextWordArray = CryptoJS.lib.WordArray.create(archivoCifradoUint8Array);
+  
+      // Crear CipherParams para CryptoJS
       const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext: ciphertextWordArray });
-
-      // Decrypt using AES-CBC
-      const decrypted = CryptoJS.AES.decrypt(cipherParams, keyWordArray, { iv: ivWordArray });
-
-      const uint8Array = new Uint8Array(decrypted.sigBytes);
-      for (let i = 0; i < decrypted.sigBytes; i++) {
-        uint8Array[i] = (decrypted.words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
-      }
-
-      const mimeType = obtenerTipoMime(tokenId);
-
-      console.log(mimeType);
-      return new Blob([uint8Array], { type: mimeType });
+  
+      // Descifrar usando AES-CBC
+      const decrypted = CryptoJS.AES.decrypt(cipherParams, keyWordArray, {
+        iv: ivWordArray,
+        padding: CryptoJS.pad.Pkcs7, // Asegurarse de usar el mismo padding que en el cifrado
+      });
+  
+      const decryptedBytes = wordArrayToUint8Array(decrypted)
+  
+      // Crear un Blob con el contenido descifrado y el tipo MIME
+      return new Blob([decryptedBytes], { type: mimeType });
     } catch (error) {
       console.error("Error al descifrar el archivo:", error.message);
       return null;
@@ -126,8 +142,8 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
         return;
       }
 
-
       const archivoDescifradoResultado = descifrarArchivo(archivoCifrado, claveDescifrado, iv, tipoMime);
+      console.log(archivoDescifradoResultado);
       if (archivoDescifradoResultado) {
         setArchivoDescifrado(archivoDescifradoResultado);
       } else {

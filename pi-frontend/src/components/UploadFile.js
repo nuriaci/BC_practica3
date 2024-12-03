@@ -7,7 +7,6 @@ import { toast } from 'react-toastify'; // Importar la función de Toastify
 import 'react-toastify/dist/ReactToastify.css'; // Importar los estilos de Toastify
 import CryptoJS from 'crypto-js';
 
-
 // Función auxiliar para convertir WordArray a Uint8Array
 const wordArrayToUint8Array = (wordArray) => {
   const words = wordArray.words;
@@ -40,21 +39,16 @@ function UploadFile({ closeModal }) {
   // Leer y convertir el archivo seleccionado
   const retrieveFile = (e) => {
     const data = e.target.files[0];
+    const reader = new FileReader();
 
-    if (data && data instanceof Blob) {
-      const reader = new FileReader();
+    reader.onloadend = () => {
+      const fileArrayBuffer = reader.result;
+      const fileUint8Array = new Uint8Array(fileArrayBuffer);
+      setFile({ content: fileUint8Array, mime: data.type });  // Guardamos el archivo binario y su tipo MIME
+    };
 
-      reader.onloadend = () => {
-        const fileArrayBuffer = reader.result;
-        const fileUint8Array = new Uint8Array(fileArrayBuffer);
-        setFile({ content: fileUint8Array, mime: data.type });  // Guardamos el archivo binario y su tipo MIME
-        console.log(data.type)
-      };
+    reader.readAsArrayBuffer(data);  // Leer el archivo como ArrayBuffer (binario)
 
-      reader.readAsArrayBuffer(data);  // Leer el archivo como ArrayBuffer (binario)
-    } else {
-      toast.error("Por favor selecciona un archivo válido.");
-    }
     e.preventDefault();
   };
 
@@ -82,7 +76,7 @@ function UploadFile({ closeModal }) {
 
     // Generar una clave aleatoria de 32 bytes (256 bits)
     const key = CryptoJS.lib.WordArray.random(32); // 32 bytes = 256 bits
-    console.log(key)
+    console.log("Clave generada:", key);
 
     const keyHex = CryptoJS.enc.Hex.stringify(key); // Convertir clave a hexadecimal para almacenamiento
 
@@ -98,15 +92,15 @@ function UploadFile({ closeModal }) {
 
     // Convertir Uint8Array a WordArray
     const wordArray = CryptoJS.lib.WordArray.create(file.content);
-    console.log(wordArray)
+    console.log("WordArray:", wordArray);
 
     // Cifrar el archivo usando AES con el WordArray de la clave
-    const encrypted = CryptoJS.AES.encrypt(wordArray, keyHex, {
+    const encrypted = CryptoJS.AES.encrypt(wordArray, key, {
       iv: iv,
       padding: CryptoJS.pad.Pkcs7, // Añadir relleno (padding) si el tamaño no es múltiplo de 16
     });
-    console.log("Archivo cifrado:", encrypted.toString());
 
+    console.log("Archivo cifrado:", encrypted.toString());
 
     if (!encrypted) {
       throw new Error("El archivo no se pudo cifrar.");
@@ -142,7 +136,8 @@ function UploadFile({ closeModal }) {
     try {
       const account = await checkMetaMaskConnection();
       console.log(`Conectado a MetaMask con la cuenta: ${account}`);
-      console.log(file)
+      console.log(file);
+
       const { cipheredFileBuffer, key, iv } = cipherFile(file);
 
       const keyBuffer = Buffer.from(key, 'hex'); // Convierte clave a Buffer
@@ -151,9 +146,17 @@ function UploadFile({ closeModal }) {
       }
 
       const keyHex = `0x${key}`; // Agregar el prefijo 0x
+      const ivHex = `0x${iv}`;
+      console.log("Clave: ", keyHex);
+      console.log("IV: ", ivHex);
+      console.log("Titulo: ", titulo);
+      console.log("Descripción: ", descripcion);
+      console.log("MIME: ", file.mime);
 
       // Cliente IPFS (conexión a tu nodo local)
-      const client = await create("/ip4/127.0.0.1/tcp/5002"); // Conexión IPFS local
+      const client = await create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
+      const version = await client.version();
+      console.log("Versión de IPFS:", version);
 
       // Subir el archivo cifrado a IPFS
       const result = await client.add(cipheredFileBuffer);
@@ -167,10 +170,11 @@ function UploadFile({ closeModal }) {
         titulo,                // Título del archivo
         descripcion,           // Descripción del archivo
         keyHex,                // Clave cifrada
-        iv,                    // IV asociado
+        ivHex,                 // IV asociado
         file.mime              // Tipo MIME del archivo
       );
       await tx.wait(); // Esperar confirmación de la transacción
+
       setIpfsHash(result.cid.toString());
       toast.success(`Archivo subido y registrado con éxito: ${result.cid.toString()}`); // Notificación de éxito
       closeModal(); // Cerrar el modal después de subir el archivo
