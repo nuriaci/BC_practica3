@@ -231,7 +231,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
     }*/
 
     /* ===== Licencias Temporales ===== */
-    function darLicenciaTemporal(uint256 tokenId, address usuario, uint256 duracionLicencia) external soloPropietario(tokenId) {
+    /*function darLicenciaTemporal(uint256 tokenId, address usuario, uint256 duracionLicencia) external soloPropietario(tokenId) {
         // Calcular el hash de la dirección del usuario
         bytes32 hashLicencia = keccak256(abi.encodePacked(usuario));
         
@@ -266,10 +266,10 @@ contract PropiedadIntelectual is ERC721URIStorage {
             return true;
         }
         return false; 
-    }
+    }*/
 
     /*================== Visualizar licencias & temporales ===============*/
-    function verLicenciasDeArchivo(uint256 tokenId) external view soloPropietario(tokenId) returns (Licencia[] memory) {
+    /*function verLicenciasDeArchivo(uint256 tokenId) external view soloPropietario(tokenId) returns (Licencia[] memory) {
         // Contar cuántas licencias existen para este archivo
         uint256 totalLicencias = 0;
         for (uint256 i = 0; i < propietarios.length; i++) {
@@ -297,7 +297,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
         }
 
         return licencias;
-    }
+    }*/
 
 
 

@@ -6,7 +6,6 @@ import RecursosPropietario from "./RecursosPropietario";
 import RecursosAccesoLicencia from "./RecursosAccesoLicencia";
 import { addresses, abis } from "../contracts";
 import { ethers } from "ethers";
-import axios from 'axios';
 import { CloudArrowUpIcon, DocumentTextIcon, ListBulletIcon, MagnifyingGlassCircleIcon } from '@heroicons/react/24/outline';
 import HistorialTransferencias from "./HistorialTransferencias";
 import '../styles.css';
@@ -26,7 +25,6 @@ function Dashboard() {
   const [modalType, setModalType] = useState(""); // Nuevo estado para controlar el tipo de modal
   const [archivos, setArchivos] = useState([]);
   const [archivosCount, setArchivosCount] = useState(0);
-  const [isOwner, setIsOwner] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -325,16 +323,9 @@ function Dashboard() {
                   <h3 className="text-md font-bold">
                     {/* Verificación de acceso antes de mostrar el enlace */}
                     {archivo.tieneAcceso ? (
-                      <a
-                        href={`http://127.0.0.1:8081/ipfs/${archivo.hash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-teal-400 hover:text-teal-200"
-                      >
-                        {archivo.titulo}
-                      </a>
+                      <span className="text-blue-400">{archivo.titulo}</span>
                     ) : (
-                      <span className="text-gray-400">{archivo.titulo} (Acceso restringido)</span>
+                      <span className="text-red-400">{archivo.titulo} (Acceso restringido)</span>
                     )}
                   </h3>
                   <p className="text-sm text-gray-300">{archivo.descripcion}</p>
@@ -344,8 +335,6 @@ function Dashboard() {
                     TokenId: {archivo.tokenId}
                     <p className="text-xs text-gray-600 mt-2"></p>
                     Hash: {archivo.hash}
-                    <p className="text-xs text-gray-600 mt-2"></p>
-                    propietario: {archivo.direccionPropietario}
                   </p>
                 </li>
               ))}

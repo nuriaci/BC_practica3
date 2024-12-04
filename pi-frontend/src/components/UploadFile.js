@@ -76,7 +76,6 @@ function UploadFile({ closeModal }) {
 
     // Generar una clave aleatoria de 32 bytes (256 bits)
     const key = CryptoJS.lib.WordArray.random(32); // 32 bytes = 256 bits
-    console.log("Clave generada:", key);
 
     const keyHex = CryptoJS.enc.Hex.stringify(key); // Convertir clave a hexadecimal para almacenamiento
 
@@ -84,15 +83,11 @@ function UploadFile({ closeModal }) {
       throw new Error("La clave generada no es válida.");
     }
 
-    console.log("Clave generada (hex):", keyHex);
-
     // Generar un IV aleatorio (16 bytes para AES)
     const iv = CryptoJS.lib.WordArray.random(16); // 16 bytes = 128 bits
-    console.log("IV generado (hex):", CryptoJS.enc.Hex.stringify(iv));
 
     // Convertir Uint8Array a WordArray
     const wordArray = CryptoJS.lib.WordArray.create(file.content);
-    console.log("WordArray:", wordArray);
 
     // Cifrar el archivo usando AES con el WordArray de la clave
     const encrypted = CryptoJS.AES.encrypt(wordArray, key, {
@@ -100,19 +95,15 @@ function UploadFile({ closeModal }) {
       padding: CryptoJS.pad.Pkcs7, // Añadir relleno (padding) si el tamaño no es múltiplo de 16
     });
 
-    console.log("Archivo cifrado:", encrypted.toString());
-
     if (!encrypted) {
       throw new Error("El archivo no se pudo cifrar.");
     }
 
     // Convertir el ciphertext a Uint8Array
     const cipheredFileUint8Array = wordArrayToUint8Array(encrypted.ciphertext);
-    console.log("Archivo cifrado (Uint8Array):", cipheredFileUint8Array);
 
     // Convertir a Buffer para almacenarlo en IPFS
     const cipheredFileBuffer = Buffer.from(cipheredFileUint8Array);
-    console.log("Buffer del archivo cifrado:", cipheredFileBuffer);
 
     // Retornar tanto el archivo cifrado como la clave y el IV
     return {
@@ -147,20 +138,12 @@ function UploadFile({ closeModal }) {
 
       const keyHex = `0x${key}`; // Agregar el prefijo 0x
       const ivHex = `0x${iv}`;
-      console.log("Clave: ", keyHex);
-      console.log("IV: ", ivHex);
-      console.log("Titulo: ", titulo);
-      console.log("Descripción: ", descripcion);
-      console.log("MIME: ", file.mime);
 
       // Cliente IPFS (conexión a tu nodo local)
       const client = await create("/ip4/127.0.0.1/tcp/5001"); // Conexión IPFS local
-      const version = await client.version();
-      console.log("Versión de IPFS:", version);
 
       // Subir el archivo cifrado a IPFS
       const result = await client.add(cipheredFileBuffer);
-      console.log("Archivo subido a IPFS:", result);
 
       // Registrar el archivo en el contrato de Ethereum
       const signer = defaultProvider.getSigner();
@@ -176,7 +159,6 @@ function UploadFile({ closeModal }) {
       await tx.wait(); // Esperar confirmación de la transacción
 
       setIpfsHash(result.cid.toString());
-      toast.success(`Archivo subido y registrado con éxito: ${result.cid.toString()}`); // Notificación de éxito
       closeModal(); // Cerrar el modal después de subir el archivo
     } catch (error) {
       console.error("Error al subir el archivo:", error.message);
@@ -230,14 +212,7 @@ function UploadFile({ closeModal }) {
         {ipfsHash && (
           <p className="mt-4 text-green-600">
             Archivo subido con éxito:{" "}
-            <a
-              href={`https://webui.ipfs.io/#/files/${ipfsHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline text-blue-500"
-            >
               {ipfsHash}
-            </a>
           </p>
         )}
         {errorMessage && <p className="mt-4 text-red-600">{errorMessage}</p>}

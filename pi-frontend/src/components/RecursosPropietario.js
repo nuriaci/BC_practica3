@@ -3,7 +3,18 @@ import { ethers } from "ethers";
 import { addresses, abis } from "../contracts";
 import { ArrowsRightLeftIcon, CheckCircleIcon, XCircleIcon, DocumentMagnifyingGlassIcon, FingerPrintIcon, ClockIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { create } from "kubo-rpc-client"; // Cliente IPFS
+import CryptoJS from 'crypto-js';
+import { Buffer } from "buffer";
 
+const wordArrayToUint8Array = (wordArray) => {
+  const words = wordArray.words;
+  const sigBytes = wordArray.sigBytes;
+  const u8 = new Uint8Array(sigBytes);
+  for (let i = 0; i < sigBytes; i++) {
+    u8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xFF;
+  }
+  return u8;
+};
 // Proveedor de Ethereum
 const defaultProvider = new ethers.providers.Web3Provider(window.ethereum);
 
@@ -16,7 +27,7 @@ const propietarioContract = new ethers.Contract(
 
 function RecursosPropietario({ closeModal, selectedFile }) {
 
-  const { tokenId } = selectedFile;
+  const { hash, direccionPropietario, tokenId } = selectedFile;
   const [activeOption, setActiveOption] = useState(null);
   const [nuevoPropietario, setNuevoPropietario] = useState("");
   // const [tokenId, setTokenId] = useState("");
@@ -35,16 +46,20 @@ function RecursosPropietario({ closeModal, selectedFile }) {
   const [certificado, setCertificado] = useState(null);
   /* Listar accesos a archivo */
   const [accesosPermitidos, setAccesosPermitidos] = useState([]);
+  /* Acceder a archivo */
+  const [archivoDescifrado, setArchivoDescifrado] = useState(null);
+
 
   const functionalities = [
     { title: "Transferir propiedad", action: () => setActiveOption("transferir"), icon: <ArrowsRightLeftIcon className="w-8 h-8" /> },
-    { title: "Proporcionar acceso", action: () => setActiveOption("acceso"), icon: <CheckCircleIcon className="w-8 h-8" /> },
+    { title: "Proporcionar acceso", action: () => setActiveOption("proporcionaracceso"), icon: <CheckCircleIcon className="w-8 h-8" /> },
     { title: "Revocar acceso", action: () => setActiveOption("revocar"), icon: <XCircleIcon className="w-8 h-8" /> },
     { title: "Consultar certificado", action: () => setActiveOption("consultar"), icon: <DocumentMagnifyingGlassIcon className="w-8 h-8" /> },
     { title: "Auditar archivo", action: () => setActiveOption("auditar"), icon: <FingerPrintIcon className="w-8 h-8" /> },
     { title: "Dar licencia temporal", action: () => setActiveOption("licencia"), icon: <ClockIcon className="w-8 h-8" /> },
     { title: "Listar accesos permitidos", action: () => setActiveOption("listaraccesos"), icon: <ClockIcon className="w-8 h-8" /> },
     { title: "Eliminar archivo", action: () => setActiveOption("eliminar"), icon: <TrashIcon className="w-8 h-8" /> },
+    { title: "Acceder a archivo", action: () => setActiveOption("acceso"), icon: <TrashIcon className="w-8 h-8" /> },
   ];
 
   // Función para escuchar el evento "ArchivoEliminado"
@@ -278,7 +293,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
       const signer = defaultProvider.getSigner();
       const contratoConSigner = propietarioContract.connect(signer);
 
-      const esValido = await contratoConSigner.fileAudit(signer.getAddress(), hashActual);
+      const esValido = await contratoConSigner.fileAudit(tokenId, hashActual);
 
       if (esValido) {
         alert("El archivo es válido, no ha sido modificado.");
@@ -316,6 +331,76 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     }
   };
 
+  const accederArchivo = async (e) => {
+
+    e.preventDefault()
+    let archivo = "";
+    let blobDescifrado = "";
+    let claveDescifrada = "";
+    let iv = "";
+    let mimeType = "";
+
+    const client = create("/ip4/127.0.0.1/tcp/5001");
+    const signer = defaultProvider.getSigner();
+    const userAddress = await signer.getAddress();
+    const contratoConSigner = propietarioContract.connect(signer);
+
+    try {
+      // Obtenemos la clave de descifrado
+      claveDescifrada = await contratoConSigner.obtenerClave(tokenId, userAddress);
+      
+      // Obtenemos el IV
+      iv = await propietarioContract.obtenerIV(tokenId);
+
+      // Obtenemos el archivo de IPFS
+      const archivoGenerator = client.cat(hash);
+      let archivoCifrado = [];
+      for await (const chunk of archivoGenerator) {
+        archivoCifrado.push(chunk);
+      }
+      archivo = Buffer.concat(archivoCifrado);
+
+      // Obtenemos el mimeType
+      mimeType = await contratoConSigner.obtenerTipoMime(direccionPropietario, tokenId);
+
+      // Eliminar prefijos '0x' si existen
+      const claveSinPrefijo = claveDescifrada.startsWith("0x") ? claveDescifrada.slice(2) : claveDescifrada;
+      const ivSinPrefijo = iv.startsWith("0x") ? iv.slice(2) : iv;
+  
+      // Convertir clave e IV a WordArray
+      const keyWordArray = CryptoJS.enc.Hex.parse(claveSinPrefijo);
+      const ivWordArray = CryptoJS.enc.Hex.parse(ivSinPrefijo);
+  
+      // Convertir archivo cifrado (Buffer) a WordArray
+      const archivoCifradoUint8Array = new Uint8Array(archivo);
+      const ciphertextWordArray = CryptoJS.lib.WordArray.create(archivoCifradoUint8Array);
+  
+      // Crear CipherParams para CryptoJS
+      const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext: ciphertextWordArray });
+  
+      // Descifrar usando AES-CBC
+      const decrypted = CryptoJS.AES.decrypt(cipherParams, keyWordArray, {
+        iv: ivWordArray,
+        padding: CryptoJS.pad.Pkcs7, // Asegurarse de usar el mismo padding que en el cifrado
+      });
+  
+      const decryptedBytes = wordArrayToUint8Array(decrypted)
+  
+      // Crear un Blob con el contenido descifrado y el tipo MIME
+      blobDescifrado = new Blob([decryptedBytes], { type: mimeType });
+     
+    } catch (error) {
+      console.error("Error en el proceso de descifrado", error.message);
+      setErrorMessage("No se ha podido descifrar el archivo.");
+      return null;
+    }
+
+    if (blobDescifrado) {
+      setArchivoDescifrado(blobDescifrado);
+    } else {
+      setErrorMessage("Error al descifrar el archivo.");
+    }
+  }
 
   const renderOptionContent = () => {
     switch (activeOption) {
@@ -352,7 +437,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
             </button>
             {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
           </form></>);
-      case "acceso":
+      case "proporcionaracceso":
         return (
           <>
             <form onSubmit={proporcionarAcceso}>
@@ -498,6 +583,50 @@ function RecursosPropietario({ closeModal, selectedFile }) {
             )}
           </>
         );
+        case "acceso":
+          return (
+            <>
+              <form onSubmit={accederArchivo}>
+                <button
+                  type="submit"
+                  className="bg-teal-500 hover:bg-teal-600 text-white mt-4 py-2 px-4 rounded w-full"
+                >
+                  Acceder al Archivo
+                </button>
+                {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
+              </form>
+              {archivoDescifrado && (
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold">Vista Previa del Archivo</h3>
+                  <div className="mt-4 bg-gray-900 p-4 rounded shadow-md">
+                    {archivoDescifrado.type.startsWith("image/") && (
+                      <img
+                        src={URL.createObjectURL(archivoDescifrado)}
+                        alt="Archivo Descifrado"
+                        className="w-full rounded"
+                      />
+                    )}
+                    {archivoDescifrado.type.startsWith("application/pdf") && (
+                      <embed
+                        src={URL.createObjectURL(archivoDescifrado)}
+                        type="application/pdf"
+                        className="w-full h-96 rounded"
+                      />
+                    )}
+                    {!archivoDescifrado.type.startsWith("image/") &&
+                      !archivoDescifrado.type.startsWith("application/pdf") && (
+                        <iframe
+                          src={URL.createObjectURL(archivoDescifrado)}
+                          className="w-full h-96 rounded"
+                          title="Archivo Descifrado"
+                        ></iframe>
+                      )}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        
       default:
         return (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
