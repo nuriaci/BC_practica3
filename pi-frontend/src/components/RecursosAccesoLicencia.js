@@ -48,14 +48,17 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   };
 
   const obtenerArchivoDeIPFS = async (hash) => {
-    const client = create("/ip4/127.0.0.1/tcp/5002");
+     // Usando el gateway público de Piñata
+    const response = await fetch(`https://gateway.pinata.cloud/ipfs/${hash}`);
     try {
-      const archivoGenerator = client.cat(hash);
-      let archivoCifrado = [];
-      for await (const chunk of archivoGenerator) {
-        archivoCifrado.push(chunk);
+        // Verificar que la respuesta sea exitosa
+      if (!response.ok) {
+        throw new Error('Error al obtener el archivo desde Piñata.');
       }
-      return Buffer.concat(archivoCifrado);
+
+      // Convertir la respuesta a un Blob (contenido binario)
+      const archivo = await response.blob();
+      return archivo;
     } catch (error) {
       console.error("Error al obtener el archivo desde IPFS:", error.message);
       setErrorMessage("No se pudo obtener el archivo de IPFS.");

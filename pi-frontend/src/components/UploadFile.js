@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { create } from "kubo-rpc-client"; // Cliente IPFS de Kubo
+//import { create } from "kubo-rpc-client"; // Cliente IPFS de Kubo
 import { ethers } from "ethers";
 import { Buffer } from "buffer";
 import { addresses, abis } from "../contracts"; // Contratos
 import { toast } from 'react-toastify'; // Importar la función de Toastify
 import 'react-toastify/dist/ReactToastify.css'; // Importar los estilos de Toastify
 import CryptoJS from 'crypto-js';
-
+import axios from "axios"; 
 // Función auxiliar para convertir WordArray a Uint8Array
 const wordArrayToUint8Array = (wordArray) => {
   const words = wordArray.words;
@@ -130,26 +130,37 @@ function UploadFile({ closeModal }) {
 
       const keyHex = `0x${key}`; // Agregar el prefijo 0x
       const ivHex = `0x${iv}`;
-      console.log("Clave: ", keyHex);
-      console.log("IV: ", ivHex);
-      console.log("Titulo: ", titulo);
-      console.log("Descripción: ", descripcion);
-      console.log("MIME: ", file.mime);
 
+      // Subir el archivo a Pinata
+      const formData = new FormData();
+      const fileBlob = new Blob([cipheredFileBuffer], { type: file.mime });
+      console.log(fileBlob)
+      formData.append("file", fileBlob);
+
+      const response = await axios.post("https://api.pinata.cloud/pinning/pinFileToIPFS", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          pinata_api_key: "3bb728609cd7a7a930d4",
+          pinata_secret_api_key: "99057346cbb24d947c1cf6f2443bd7ad49231a2076dbf335f43a84fbe4846c91",
+        },
+      });
+
+      const ipfsCid = response.data.IpfsHash;
+      console.log("Archivo subido a Pinata con CID:", ipfsCid);
       // Cliente IPFS (conexión a tu nodo local)
-      const client = await create("/ip4/127.0.0.1/tcp/5002"); // Conexión IPFS local
-      const version = await client.version();
-      console.log("Versión de IPFS:", version);
+      // const client = await create("https://ipfs.infura.io:5001/api/v0"); // Conexión IPFS local
+      // const version = await client.version();
+      // console.log("Versión de IPFS:", version);
 
       // Subir el archivo cifrado a IPFS
-      const result = await client.add(cipheredFileBuffer);
-      console.log("Archivo subido a IPFS:", result);
+      // const result = await client.add(cipheredFileBuffer);
+      // console.log("Archivo subido a IPFS:", result);
 
       // Registrar el archivo en el contrato de Ethereum
       const signer = defaultProvider.getSigner();
       const contratoConSigner = registroContract.connect(signer);
       const tx = await contratoConSigner.registro(
-        result.cid.toString(), // Hash del archivo IPFS
+        ipfsCid, // Hash del archivo IPFS
         titulo,                // Título del archivo
         descripcion,           // Descripción del archivo
         keyHex,                // Clave cifrada
@@ -158,8 +169,8 @@ function UploadFile({ closeModal }) {
       );
       await tx.wait(); // Esperar confirmación de la transacción
 
-      setIpfsHash(result.cid.toString());
-      toast.success(`Archivo subido y registrado con éxito: ${result.cid.toString()}`); // Notificación de éxito
+      setIpfsHash(ipfsCid);
+      toast.success(`Archivo subido y registrado con éxito: ${ipfsCid}`); // Notificación de éxito
       closeModal(); // Cerrar el modal después de subir el archivo
     } catch (error) {
       console.error("Error al subir el archivo:", error.message);

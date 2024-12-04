@@ -48,12 +48,8 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   };
 
   const obtenerArchivoDeIPFS = async (hash) => {
-<<<<<<< HEAD
-    const client = create("/ip4/127.0.0.1/tcp/5001");
+    const client = create("https://ipfs.infura.io:5001/api/v0");
     console.log(hash)
-=======
-    const client = create("/ip4/127.0.0.1/tcp/5002");
->>>>>>> 9fff00f5bce79d177597d866f4661617417bda5b
     try {
       const archivoGenerator = client.cat(hash);
       console.log(archivoGenerator)

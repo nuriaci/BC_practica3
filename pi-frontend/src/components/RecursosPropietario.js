@@ -17,8 +17,9 @@ const wordArrayToUint8Array = (wordArray) => {
 };
 // Proveedor de Ethereum
 const defaultProvider = new ethers.providers.Web3Provider(window.ethereum);
+const pinataApiKey = "3bb728609cd7a7a930d4"
+const pinata_secret_api_key = "99057346cbb24d947c1cf6f2443bd7ad49231a2076dbf335f43a84fbe4846c91"
 
-// Instancia del contrato en Ethereum
 const propietarioContract = new ethers.Contract(
   addresses.ipfs,
   abis.ipfs,
@@ -339,8 +340,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     let claveDescifrada = "";
     let iv = "";
     let mimeType = "";
-
-    const client = create("/ip4/127.0.0.1/tcp/5001");
+    let response = "";
     const signer = defaultProvider.getSigner();
     const userAddress = await signer.getAddress();
     const contratoConSigner = propietarioContract.connect(signer);
@@ -352,13 +352,17 @@ function RecursosPropietario({ closeModal, selectedFile }) {
       // Obtenemos el IV
       iv = await propietarioContract.obtenerIV(tokenId);
 
-      // Obtenemos el archivo de IPFS
-      const archivoGenerator = client.cat(hash);
-      let archivoCifrado = [];
-      for await (const chunk of archivoGenerator) {
-        archivoCifrado.push(chunk);
+      response = await fetch(`https://gateway.pinata.cloud/ipfs/${hash}`, {
+        method: 'GET'
+      });
+      // Verificar que la respuesta sea exitosa
+      if (!response.ok) {
+        throw new Error('Error al obtener el archivo desde Piñata.');
       }
-      archivo = Buffer.concat(archivoCifrado);
+
+      // Convertir la respuesta a un Blob (contenido binario)
+      archivo = await response.blob();
+      console.log(archivo)
 
       // Obtenemos el mimeType
       mimeType = await contratoConSigner.obtenerTipoMime(direccionPropietario, tokenId);
@@ -372,7 +376,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
       const ivWordArray = CryptoJS.enc.Hex.parse(ivSinPrefijo);
   
       // Convertir archivo cifrado (Buffer) a WordArray
-      const archivoCifradoUint8Array = new Uint8Array(archivo);
+      const archivoCifradoUint8Array = new Uint8Array(await archivo.arrayBuffer());
       const ciphertextWordArray = CryptoJS.lib.WordArray.create(archivoCifradoUint8Array);
   
       // Crear CipherParams para CryptoJS
