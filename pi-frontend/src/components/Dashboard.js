@@ -51,15 +51,38 @@ function Dashboard() {
 
   useEffect(() => {
     // Verifica la cuenta conectada al cargar el componente
+    checkMetaMaskConnection();
     checkAccount();
   }, []); // Se ejecuta solo al montar el componente
-  
+
   useEffect(() => {
     // Busca los archivos registrados después de asegurarse de que hay una cuenta conectada
     if (currentAccount) {
       buscarArchivos();
     }
   }, [currentAccount]); // Se ejecuta cuando `currentAccount` cambia
+
+
+  const checkMetaMaskConnection = async () => {
+    try {
+      if (!window.ethereum) {
+        throw new Error("MetaMask no está instalada.");
+      }
+
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (accounts.length === 0) {
+        throw new Error("MetaMask no está conectada.");
+      }
+
+      return accounts[0]; // Devuelve la dirección de la cuenta conectada
+    } catch (error) {
+      if (error.message.includes("wallet_requestPermissions already pending")) {
+        console.warn("Por favor, espera a que MetaMask procese tu solicitud.");
+      } else {
+        console.error(error.message);
+      }
+    }
+  };
 
   const buscarArchivos = async () => {
     try {
@@ -100,7 +123,7 @@ function Dashboard() {
 
   const checkAccount = async () => {
     try {
-      const accounts = await window.ethereum.request ({method: "eth_accounts"});
+      const accounts = await window.ethereum.request({ method: "eth_accounts" });
       if (accounts.length > 0) {
         const account = accounts[0];
         setCurrentAccount(account);
@@ -112,7 +135,7 @@ function Dashboard() {
   };
 
   const checkTermsAcceptance = async (account) => {
-    try { 
+    try {
       const termsAccepted = await registroContract.verificarConsentimiento(account);
       setShowTermsModal(!termsAccepted); // Mostrar modal si no ha aceptado
     } catch (error) {
@@ -179,7 +202,7 @@ function Dashboard() {
         setSelectedFile(file); // Actualizar archivo seleccionado
         setErrorMessage(''); // Limpiar mensaje de error
       }
-      
+
     } catch (error) {
       console.error('Error al procesar el archivo:', error.message);
       setErrorMessage('Hubo un problema al acceder al archivo.'); // Mensaje de error

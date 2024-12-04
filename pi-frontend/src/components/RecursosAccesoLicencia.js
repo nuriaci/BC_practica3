@@ -48,16 +48,13 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   };
 
   const obtenerArchivoDeIPFS = async (hash) => {
-    const client = create("/ip4/127.0.0.1/tcp/5001");
-    console.log(hash)
+    const client = create("/ip4/127.0.0.1/tcp/5002");
     try {
       const archivoGenerator = client.cat(hash);
-      console.log(archivoGenerator)
       let archivoCifrado = [];
       for await (const chunk of archivoGenerator) {
         archivoCifrado.push(chunk);
       }
-      console.log(archivoCifrado)
       return Buffer.concat(archivoCifrado);
     } catch (error) {
       console.error("Error al obtener el archivo desde IPFS:", error.message);
@@ -84,26 +81,26 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
       // Eliminar prefijos '0x' si existen
       const claveSinPrefijo = claveHex.startsWith("0x") ? claveHex.slice(2) : claveHex;
       const ivSinPrefijo = ivHex.startsWith("0x") ? ivHex.slice(2) : ivHex;
-  
+
       // Convertir clave e IV a WordArray
       const keyWordArray = CryptoJS.enc.Hex.parse(claveSinPrefijo);
       const ivWordArray = CryptoJS.enc.Hex.parse(ivSinPrefijo);
-  
+
       // Convertir archivo cifrado (Buffer) a WordArray
       const archivoCifradoUint8Array = new Uint8Array(archivoCifradoBuffer);
       const ciphertextWordArray = CryptoJS.lib.WordArray.create(archivoCifradoUint8Array);
-  
+
       // Crear CipherParams para CryptoJS
       const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext: ciphertextWordArray });
-  
+
       // Descifrar usando AES-CBC
       const decrypted = CryptoJS.AES.decrypt(cipherParams, keyWordArray, {
         iv: ivWordArray,
         padding: CryptoJS.pad.Pkcs7, // Asegurarse de usar el mismo padding que en el cifrado
       });
-  
+
       const decryptedBytes = wordArrayToUint8Array(decrypted)
-  
+
       // Crear un Blob con el contenido descifrado y el tipo MIME
       return new Blob([decryptedBytes], { type: mimeType });
     } catch (error) {
@@ -115,7 +112,6 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   const obtenerIVDesdeContrato = async (tokenId) => {
     try {
       const iv = await propietarioContract.obtenerIV(tokenId);
-      console.log(iv)
       return iv;
     } catch (error) {
       console.error("Error al obtener el IV:", error.message);
@@ -132,11 +128,8 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
         setErrorMessage("Clave de descifrado no encontrada.");
         return;
       }
-      console.log(claveDescifrado)
 
       const archivoCifrado = await obtenerArchivoDeIPFS(hash);
-      console.log(archivoCifrado)
-
       if (!archivoCifrado) {
         setErrorMessage("Archivo no encontrado en IPFS.");
         return;
@@ -165,67 +158,25 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   return (
     <div className="modal-container">
       <h2 className="text-2xl font-semibold">Opciones para acceder al archivo</h2>
-      <div className="mt-6">
-        {functionalities.map((func, idx) => (
-          <button
-            key={idx}
-            onClick={func.action}
-            className="bg-teal-500 hover:bg-teal-600 text-white mt-4 py-2 px-4 rounded w-full"
-          >
-            {func.title}
-          </button>
-        ))}
-      </div>
-      
-      {activeOption === "acceso" && (
-        <>
-          <form onSubmit={accederArchivo}>
-            <button
-              type="submit"
-              className="bg-teal-500 hover:bg-teal-600 text-white mt-4 py-2 px-4 rounded w-full"
-            >
-              Acceder al Archivo
-            </button>
-            {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
-          </form>
-          {archivoDescifrado && (
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold">Vista Previa del Archivo</h3>
-              <div className="mt-4 bg-gray-900 p-4 rounded shadow-md">
-                {archivoDescifrado.type.startsWith("image/") && (
-                  <img
-                    src={URL.createObjectURL(archivoDescifrado)}
-                    alt="Archivo Descifrado"
-                    className="w-full rounded"
-                  />
-                )}
-                {archivoDescifrado.type.startsWith("application/pdf") && (
-                  <embed
-                    src={URL.createObjectURL(archivoDescifrado)}
-                    type="application/pdf"
-                    className="w-full h-96 rounded"
-                  />
-                )}
-                {!archivoDescifrado.type.startsWith("image/") &&
-                  !archivoDescifrado.type.startsWith("application/pdf") && (
-                    <iframe
-                      src={URL.createObjectURL(archivoDescifrado)}
-                      className="w-full h-96 rounded"
-                      title="Archivo Descifrado"
-                    ></iframe>
-                  )}
-              </div>
-            </div>
-          )}
-        </>
-      )}
+      <form onSubmit={accederArchivo}>
+        <button
+          type="submit"
+          className="bg-teal-600 hover:bg-teal-700 text-white mt-4 py-2 px-4 rounded w-full"
+        >
+          Descargar el archivo descifrado
+        </button>
+        {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
+      </form>
 
-      <button
-        onClick={closeModal}
-        className="bg-red-500 hover:bg-red-600 text-white mt-4 py-2 px-4 rounded w-full"
-      >
-        Cerrar
-      </button>
+      {archivoDescifrado && (
+        <a
+          href={URL.createObjectURL(archivoDescifrado)}
+          download="archivo_descifrado"
+          className="bg-teal-600 hover:bg-teal-700 text-white py-2 px-4 rounded mt-4 inline-block"
+        >
+          Descargar archivo
+        </a>
+      )}
     </div>
   );
 }
