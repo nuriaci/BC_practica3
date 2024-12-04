@@ -161,25 +161,67 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
   return (
     <div className="modal-container">
       <h2 className="text-2xl font-semibold">Opciones para acceder al archivo</h2>
-      <form onSubmit={accederArchivo}>
-        <button
-          type="submit"
-          className="bg-teal-600 hover:bg-teal-700 text-white mt-4 py-2 px-4 rounded w-full"
-        >
-          Descargar el archivo descifrado
-        </button>
-        {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
-      </form>
-
-      {archivoDescifrado && (
-        <a
-          href={URL.createObjectURL(archivoDescifrado)}
-          download="archivo_descifrado"
-          className="bg-teal-600 hover:bg-teal-700 text-white py-2 px-4 rounded mt-4 inline-block"
-        >
-          Descargar archivo
-        </a>
+      <div className="mt-6">
+        {functionalities.map((func, idx) => (
+          <button
+            key={idx}
+            onClick={func.action}
+            className="bg-teal-500 hover:bg-teal-600 text-white mt-4 py-2 px-4 rounded w-full"
+          >
+            {func.title}
+          </button>
+        ))}
+      </div>
+      
+      {activeOption === "acceso" && (
+        <>
+          <form onSubmit={accederArchivo}>
+            <button
+              type="submit"
+              className="bg-teal-500 hover:bg-teal-600 text-white mt-4 py-2 px-4 rounded w-full"
+            >
+              Acceder al Archivo
+            </button>
+            {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
+          </form>
+          {archivoDescifrado && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold">Vista Previa del Archivo</h3>
+              <div className="mt-4 bg-gray-900 p-4 rounded shadow-md">
+                {archivoDescifrado.type.startsWith("image/") && (
+                  <img
+                    src={URL.createObjectURL(archivoDescifrado)}
+                    alt="Archivo Descifrado"
+                    className="w-full rounded"
+                  />
+                )}
+                {archivoDescifrado.type.startsWith("application/pdf") && (
+                  <embed
+                    src={URL.createObjectURL(archivoDescifrado)}
+                    type="application/pdf"
+                    className="w-full h-96 rounded"
+                  />
+                )}
+                {!archivoDescifrado.type.startsWith("image/") &&
+                  !archivoDescifrado.type.startsWith("application/pdf") && (
+                    <iframe
+                      src={URL.createObjectURL(archivoDescifrado)}
+                      className="w-full h-96 rounded"
+                      title="Archivo Descifrado"
+                    ></iframe>
+                  )}
+              </div>
+            </div>
+          )}
+        </>
       )}
+
+      <button
+        onClick={closeModal}
+        className="bg-red-500 hover:bg-red-600 text-white mt-4 py-2 px-4 rounded w-full"
+      >
+        Cerrar
+      </button>
     </div>
   );
 }
