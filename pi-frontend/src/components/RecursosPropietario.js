@@ -2,9 +2,9 @@ import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { addresses, abis } from "../contracts";
 import { ArrowsRightLeftIcon, CheckCircleIcon, XCircleIcon, DocumentMagnifyingGlassIcon, FingerPrintIcon, ClockIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { create } from "kubo-rpc-client"; // Cliente IPFS
 import CryptoJS from 'crypto-js';
 import { Buffer } from "buffer";
+import axios from "axios";
 
 const wordArrayToUint8Array = (wordArray) => {
   const words = wordArray.words;
@@ -63,82 +63,47 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     { title: "Acceder a archivo", action: () => setActiveOption("acceso"), icon: <TrashIcon className="w-8 h-8" /> },
   ];
 
-  // Función para escuchar el evento "ArchivoEliminado"
-  useEffect(() => {
-    const listenToArchivoEliminado = () => {
-      propietarioContract.on("ArchivoEliminado", async (hash_ipfs, tokenId) => {
-        console.log("Evento 'ArchivoEliminado' detectado.");
-        try {
-          console.log("Intentando eliminar archivo con CID:", hash_ipfs);
-          await eliminarArchivoDeIPFS(hash_ipfs); // Eliminar archivo de IPFS
-          alert("Archivo eliminado de IPFS.");
-        } catch (error) {
-          console.error("Error al eliminar archivo de IPFS:", error.message);
-          setErrorMessage("No se pudo eliminar el archivo de IPFS.");
-        }
-      });
-    };
-
-    listenToArchivoEliminado();
-
-    // Limpiar el listener cuando el componente se desmonte
-    return () => {
-      propietarioContract.removeListener("ArchivoEliminado", listenToArchivoEliminado);
-    };
-  }, []);
-
-  // Función para eliminar archivo de IPFS
-  const eliminarArchivoDeIPFS = async (cid) => {
+  const unpinFile = async () => {
     try {
-      const client = create("/ip4/127.0.0.1/tcp/5002"); // Conexión IPFS local
-      console.log("Intentando eliminar archivo con CID:", cid);
 
-      // Obtener la lista de archivos anclados (AsyncGenerator)
-      const pinListGenerator = await client.pin.ls();
-
-      let found = false;
-
-      // Iterar sobre los resultados del generador y eliminar los archivos recursivos e indirectos
-      for await (let pin of pinListGenerator) {
-        console.log("Archivo anclado:", pin);
-        if (pin.cid === cid || pin.cid === cid) {
-          // Eliminar el archivo anclado (ya sea recursivo o indirecto)
-          await client.pin.rm(pin.cid, { recursive: true }); // Desanclaje recursivo
-          console.log(`Archivo con CID ${pin.cid} eliminado de IPFS local.`);
-          found = true;
+      const options = {
+        method: 'DELETE', headers: {
+          'pinata_api_key': '3bb728609cd7a7a930d4',
+          'pinata_secret_api_key': '99057346cbb24d947c1cf6f2443bd7ad49231a2076dbf335f43a84fbe4846c91'
         }
       }
+      // Realiza la solicitud para desanclar el archivo
+      const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${hash}`, options);
 
-      if (!found) {
-        console.log(`El archivo con CID ${cid} no está anclado.`);
+
+      if (!response.ok) {
+        throw new Error('Error al desanclar archivo');
       }
+      console.log(`Archivo con CID ${tokenId} desanclado exitosamente de Pinata.`);
 
+      // Después de desanclar el archivo de Pinata, elimina el archivo del contrato.
+      await eliminarArchivo();
     } catch (error) {
-      console.error("Error al eliminar archivo de IPFS:", error.message);
-      setErrorMessage("No se pudo eliminar el archivo de IPFS.");
+      console.error('Error al desanclar archivo:', error);
     }
   };
 
   // Función para eliminar el archivo
-  const eliminarArchivo = async (e) => {
-    e.preventDefault();
-    setErrorMessage("");
-
+  const eliminarArchivo = async () => {
     try {
       const signer = defaultProvider.getSigner();
       const contratoConSigner = propietarioContract.connect(signer);
+
+      // Llamada a la función de contrato para eliminar el archivo
       const tx = await contratoConSigner.eliminarArchivo(tokenId);
       await tx.wait();
 
-      alert("Archivo eliminado del contrato. Eliminando de IPFS...");
-
-      // Aquí no es necesario obtener el hash del archivo explícitamente porque lo estamos obteniendo del evento
-      closeModal(); // Cerrar el modal después de completar la eliminación
+      console.log("Archivo eliminado del contrato con CID:", tokenId);
     } catch (error) {
-      console.error("Error al eliminar el archivo:", error.message);
-      setErrorMessage("Error al eliminar el archivo. Asegúrate de ser el propietario.");
+      console.error('Error al eliminar archivo del contrato:', error);
     }
   };
+
 
   /* Listar accesos */
   const listarAccesos = async () => {
@@ -177,7 +142,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
   /*Transferir propiedad */
   const transferirPropiedad = async (e) => {
     e.preventDefault();
-
+    console.log(hash);
     if (!nuevoPropietario || !ethers.utils.isAddress(nuevoPropietario)) {
       setErrorMessage("La dirección proporcionada no es válida.");
       return;
@@ -348,7 +313,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     try {
       // Obtenemos la clave de descifrado
       claveDescifrada = await contratoConSigner.obtenerClave(tokenId, userAddress);
-      
+
       // Obtenemos el IV
       iv = await propietarioContract.obtenerIV(tokenId);
 
@@ -370,29 +335,29 @@ function RecursosPropietario({ closeModal, selectedFile }) {
       // Eliminar prefijos '0x' si existen
       const claveSinPrefijo = claveDescifrada.startsWith("0x") ? claveDescifrada.slice(2) : claveDescifrada;
       const ivSinPrefijo = iv.startsWith("0x") ? iv.slice(2) : iv;
-  
+
       // Convertir clave e IV a WordArray
       const keyWordArray = CryptoJS.enc.Hex.parse(claveSinPrefijo);
       const ivWordArray = CryptoJS.enc.Hex.parse(ivSinPrefijo);
-  
+
       // Convertir archivo cifrado (Buffer) a WordArray
       const archivoCifradoUint8Array = new Uint8Array(await archivo.arrayBuffer());
       const ciphertextWordArray = CryptoJS.lib.WordArray.create(archivoCifradoUint8Array);
-  
+
       // Crear CipherParams para CryptoJS
       const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext: ciphertextWordArray });
-  
+
       // Descifrar usando AES-CBC
       const decrypted = CryptoJS.AES.decrypt(cipherParams, keyWordArray, {
         iv: ivWordArray,
         padding: CryptoJS.pad.Pkcs7, // Asegurarse de usar el mismo padding que en el cifrado
       });
-  
+
       const decryptedBytes = wordArrayToUint8Array(decrypted)
-  
+
       // Crear un Blob con el contenido descifrado y el tipo MIME
       blobDescifrado = new Blob([decryptedBytes], { type: mimeType });
-     
+
     } catch (error) {
       console.error("Error en el proceso de descifrado", error.message);
       setErrorMessage("No se ha podido descifrar el archivo.");
@@ -412,7 +377,12 @@ function RecursosPropietario({ closeModal, selectedFile }) {
         return (
           <>
             <h3 className="text-lg font-semibold">¿Estás seguro de que deseas eliminar este archivo?</h3>
-            <form onSubmit={eliminarArchivo}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                unpinFile();
+              }}
+            >
               <button
                 type="submit"
                 className="bg-red-600 hover:bg-red-700 text-white mt-4 py-2 px-4 rounded w-full"
@@ -587,50 +557,50 @@ function RecursosPropietario({ closeModal, selectedFile }) {
             )}
           </>
         );
-        case "acceso":
-          return (
-            <>
-              <form onSubmit={accederArchivo}>
-                <button
-                  type="submit"
-                  className="bg-teal-500 hover:bg-teal-600 text-white mt-4 py-2 px-4 rounded w-full"
-                >
-                  Acceder al Archivo
-                </button>
-                {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
-              </form>
-              {archivoDescifrado && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold">Vista Previa del Archivo</h3>
-                  <div className="mt-4 bg-gray-900 p-4 rounded shadow-md">
-                    {archivoDescifrado.type.startsWith("image/") && (
-                      <img
+      case "acceso":
+        return (
+          <>
+            <form onSubmit={accederArchivo}>
+              <button
+                type="submit"
+                className="bg-teal-500 hover:bg-teal-600 text-white mt-4 py-2 px-4 rounded w-full"
+              >
+                Acceder al Archivo
+              </button>
+              {errorMessage && <p className="text-red-500 mt-4">{errorMessage}</p>}
+            </form>
+            {archivoDescifrado && (
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold">Vista Previa del Archivo</h3>
+                <div className="mt-4 bg-gray-900 p-4 rounded shadow-md">
+                  {archivoDescifrado.type.startsWith("image/") && (
+                    <img
+                      src={URL.createObjectURL(archivoDescifrado)}
+                      alt="Archivo Descifrado"
+                      className="w-full rounded"
+                    />
+                  )}
+                  {archivoDescifrado.type.startsWith("application/pdf") && (
+                    <embed
+                      src={URL.createObjectURL(archivoDescifrado)}
+                      type="application/pdf"
+                      className="w-full h-96 rounded"
+                    />
+                  )}
+                  {!archivoDescifrado.type.startsWith("image/") &&
+                    !archivoDescifrado.type.startsWith("application/pdf") && (
+                      <iframe
                         src={URL.createObjectURL(archivoDescifrado)}
-                        alt="Archivo Descifrado"
-                        className="w-full rounded"
-                      />
-                    )}
-                    {archivoDescifrado.type.startsWith("application/pdf") && (
-                      <embed
-                        src={URL.createObjectURL(archivoDescifrado)}
-                        type="application/pdf"
                         className="w-full h-96 rounded"
-                      />
+                        title="Archivo Descifrado"
+                      ></iframe>
                     )}
-                    {!archivoDescifrado.type.startsWith("image/") &&
-                      !archivoDescifrado.type.startsWith("application/pdf") && (
-                        <iframe
-                          src={URL.createObjectURL(archivoDescifrado)}
-                          className="w-full h-96 rounded"
-                          title="Archivo Descifrado"
-                        ></iframe>
-                      )}
-                  </div>
                 </div>
-              )}
-            </>
-          );
-        
+              </div>
+            )}
+          </>
+        );
+
       default:
         return (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
