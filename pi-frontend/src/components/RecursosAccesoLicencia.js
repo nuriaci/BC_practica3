@@ -33,64 +33,51 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
     { title: "Acceder al archivo", action: () => setActiveOption("acceso"), icon: <ArrowsRightLeftIcon className="w-8 h-8" /> },
   ];
 
-  const obtenerClaveDescifrado = async () => {
-    try {
-      const signer = defaultProvider.getSigner();
-      const userAddress = await signer.getAddress();
-      const contratoConSigner = propietarioContract.connect(signer);
-      const claveDescifrada = await contratoConSigner.obtenerClave(tokenId, userAddress);
-      return claveDescifrada;
-    } catch (error) {
-      console.error("Error al obtener la clave de descifrado:", error.message);
-      setErrorMessage("No se pudo obtener la clave de descifrado.");
-      return null;
-    }
-  };
+  const accederArchivo = async (e) => {
 
-  const obtenerArchivoDeIPFS = async (hash) => {
-     // Usando el gateway público de Piñata
-    const response = await fetch(`https://gateway.pinata.cloud/ipfs/${hash}`);
+    e.preventDefault()
+    let archivo = "";
+    let blobDescifrado = "";
+    let claveDescifrada = "";
+    let iv = "";
+    let mimeType = "";
+    let response = "";
+    const signer = defaultProvider.getSigner();
+    const userAddress = await signer.getAddress();
+    const contratoConSigner = propietarioContract.connect(signer);
+
     try {
-        // Verificar que la respuesta sea exitosa
+      // Obtenemos la clave de descifrado
+      claveDescifrada = await contratoConSigner.obtenerClave(tokenId, userAddress);
+
+      // Obtenemos el IV
+      iv = await propietarioContract.obtenerIV(tokenId);
+
+      response = await fetch(`https://gateway.pinata.cloud/ipfs/${hash}`, {
+        method: 'GET'
+      });
+      // Verificar que la respuesta sea exitosa
       if (!response.ok) {
         throw new Error('Error al obtener el archivo desde Piñata.');
       }
 
       // Convertir la respuesta a un Blob (contenido binario)
-      const archivo = await response.blob();
-      return archivo;
-    } catch (error) {
-      console.error("Error al obtener el archivo desde IPFS:", error.message);
-      setErrorMessage("No se pudo obtener el archivo de IPFS.");
-      return null;
-    }
-  };
+      archivo = await response.blob();
+      console.log(archivo)
 
-  const obtenerTipoMime = async (tokenId) => {
-    try {
-      const contratoConSigner = propietarioContract.connect(defaultProvider.getSigner());
-      const mimeType = await contratoConSigner.obtenerTipoMime(direccionPropietario, tokenId);
-      console.log(mimeType);
-      return mimeType;
-    } catch (error) {
-      console.error("Error al obtener el tipo MIME:", error.message);
-      setErrorMessage("No se pudo obtener el tipo MIME del archivo.");
-      return "application/octet-stream";
-    }
-  };
+      // Obtenemos el mimeType
+      mimeType = await contratoConSigner.obtenerTipoMime(direccionPropietario, tokenId);
 
-  const descifrarArchivo = (archivoCifradoBuffer, claveHex, ivHex, mimeType) => {
-    try {
       // Eliminar prefijos '0x' si existen
-      const claveSinPrefijo = claveHex.startsWith("0x") ? claveHex.slice(2) : claveHex;
-      const ivSinPrefijo = ivHex.startsWith("0x") ? ivHex.slice(2) : ivHex;
+      const claveSinPrefijo = claveDescifrada.startsWith("0x") ? claveDescifrada.slice(2) : claveDescifrada;
+      const ivSinPrefijo = iv.startsWith("0x") ? iv.slice(2) : iv;
 
       // Convertir clave e IV a WordArray
       const keyWordArray = CryptoJS.enc.Hex.parse(claveSinPrefijo);
       const ivWordArray = CryptoJS.enc.Hex.parse(ivSinPrefijo);
 
       // Convertir archivo cifrado (Buffer) a WordArray
-      const archivoCifradoUint8Array = new Uint8Array(archivoCifradoBuffer);
+      const archivoCifradoUint8Array = new Uint8Array(await archivo.arrayBuffer());
       const ciphertextWordArray = CryptoJS.lib.WordArray.create(archivoCifradoUint8Array);
 
       // Crear CipherParams para CryptoJS
@@ -105,58 +92,21 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
       const decryptedBytes = wordArrayToUint8Array(decrypted)
 
       // Crear un Blob con el contenido descifrado y el tipo MIME
-      return new Blob([decryptedBytes], { type: mimeType });
+      blobDescifrado = new Blob([decryptedBytes], { type: mimeType });
+
     } catch (error) {
-      console.error("Error al descifrar el archivo:", error.message);
+      console.error("Error en el proceso de descifrado", error.message);
+      setErrorMessage("No se ha podido descifrar el archivo.");
       return null;
     }
-  };
 
-  const obtenerIVDesdeContrato = async (tokenId) => {
-    try {
-      const iv = await propietarioContract.obtenerIV(tokenId);
-      return iv;
-    } catch (error) {
-      console.error("Error al obtener el IV:", error.message);
-      setErrorMessage("No se pudo obtener el IV.");
-      return null;
+    if (blobDescifrado) {
+      setArchivoDescifrado(blobDescifrado);
+    } else {
+      setErrorMessage("Error al descifrar el archivo.");
     }
-  };
+  }
 
-  const accederArchivo = async (e) => {
-    e.preventDefault();
-    try {
-      const claveDescifrado = await obtenerClaveDescifrado();
-      if (!claveDescifrado) {
-        setErrorMessage("Clave de descifrado no encontrada.");
-        return;
-      }
-
-      const archivoCifrado = await obtenerArchivoDeIPFS(hash);
-      if (!archivoCifrado) {
-        setErrorMessage("Archivo no encontrado en IPFS.");
-        return;
-      }
-
-      const tipoMime = await obtenerTipoMime(tokenId);
-      const iv = await obtenerIVDesdeContrato(tokenId);
-      if (!iv) {
-        setErrorMessage("No se pudo obtener el IV.");
-        return;
-      }
-
-      const archivoDescifradoResultado = descifrarArchivo(archivoCifrado, claveDescifrado, iv, tipoMime);
-      console.log(archivoDescifradoResultado);
-      if (archivoDescifradoResultado) {
-        setArchivoDescifrado(archivoDescifradoResultado);
-      } else {
-        setErrorMessage("Error al descifrar el archivo.");
-      }
-    } catch (error) {
-      console.error("Error al acceder o descifrar el archivo:", error.message);
-      setErrorMessage("Error al acceder o descifrar el archivo.");
-    }
-  };
 
   return (
     <div className="modal-container">
@@ -172,7 +122,7 @@ function RecursosAccesoLicencia({ closeModal, selectedFile }) {
           </button>
         ))}
       </div>
-      
+
       {activeOption === "acceso" && (
         <>
           <form onSubmit={accederArchivo}>

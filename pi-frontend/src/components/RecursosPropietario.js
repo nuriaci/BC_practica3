@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { addresses, abis } from "../contracts";
-import { ArrowsRightLeftIcon, CheckCircleIcon, XCircleIcon, DocumentMagnifyingGlassIcon, FingerPrintIcon, ClockIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { ArrowsRightLeftIcon, CheckCircleIcon, XCircleIcon, DocumentMagnifyingGlassIcon, FingerPrintIcon, ClockIcon, TrashIcon, FolderOpenIcon } from '@heroicons/react/24/outline';
 import CryptoJS from 'crypto-js';
 import { Buffer } from "buffer";
 import axios from "axios";
@@ -60,7 +60,7 @@ function RecursosPropietario({ closeModal, selectedFile }) {
     { title: "Dar licencia temporal", action: () => setActiveOption("licencia"), icon: <ClockIcon className="w-8 h-8" /> },
     { title: "Listar accesos permitidos", action: () => setActiveOption("listaraccesos"), icon: <ClockIcon className="w-8 h-8" /> },
     { title: "Eliminar archivo", action: () => setActiveOption("eliminar"), icon: <TrashIcon className="w-8 h-8" /> },
-    { title: "Acceder a archivo", action: () => setActiveOption("acceso"), icon: <TrashIcon className="w-8 h-8" /> },
+    { title: "Acceder a archivo", action: () => setActiveOption("acceso"), icon: <FolderOpenIcon className="w-8 h-8" /> },
   ];
 
   const unpinFile = async () => {
