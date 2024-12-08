@@ -478,12 +478,7 @@ contract PropiedadIntelectual is ERC721URIStorage {
         return allArchives;
     }
 
-    /* ===== Incrementar Nonce (al revocar acceso) ===== */
-    function incrementarNonce(uint256 tokenId) private {
-        nonces[tokenId]++;
-    }
-
-    /* ===== Obtener Clave Derivada con Nonce ===== */
+    /* ===== Obtener Clave Derivada  ===== */
    function obtenerClave(uint256 tokenId, address usuario) public view returns (bytes32) {
         // Verificar que el usuario tiene acceso
         require(verificacionClaims(usuario, tokenId), "No tienes acceso");
