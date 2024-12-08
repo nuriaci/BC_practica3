@@ -47,10 +47,10 @@ function HistorialTransferencias({ closeModal }) {
 
             // Formatear las transferencias (según cómo las devuelve el contrato)
             const formattedTransferencias = result.map((transferencia) => ({
-                from: transferencia.from || transferencia[0],
-                to: transferencia.to || transferencia[1],
-                fecha: Number(transferencia.fecha || transferencia[2]),
+                hashTransferencia: transferencia.hashTransferencia?.toString(),
+                fecha: transferencia.fecha ? Number(transferencia.fecha.toString()) : 0,
             }));
+
 
             setTransferencias(formattedTransferencias);
         } catch (error) {
@@ -106,14 +106,16 @@ function HistorialTransferencias({ closeModal }) {
                             <ul className="mt-2 space-y-2">
                                 {transferencias.map((transferencia, index) => (
                                     <li key={index} className="bg-gray-700 p-3 rounded text-sm">
-                                        <p><strong>De:</strong> {transferencia.from}</p>
-                                        <p><strong>A:</strong> {transferencia.to}</p>
+                                        <p>
+                                            <strong>Hash de Transferencia:</strong> {transferencia.hashTransferencia}
+                                        </p>
                                         <p>
                                             <strong>Fecha:</strong> {new Date(transferencia.fecha * 1000).toLocaleString()}
                                         </p>
                                     </li>
                                 ))}
                             </ul>
+
                         </>
                     )}
                 </div>
